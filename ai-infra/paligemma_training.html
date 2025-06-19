@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Guide: Scalable PaliGemma Training</title>
+    
+    <!-- Chosen Palette: Warm Neutral Harmony -->
+    <!-- Application Structure Plan: The application is structured as a single-page dashboard with a fixed sidebar navigation for seamless exploration. This non-linear design allows users (AI/ML engineers) to jump directly to sections of interest—such as comparing 'Training Strategies' or grabbing 'Implementation' code—without scrolling through the entire document. The key sections are: 1) Overview (intro), 2) Environment Setup (visual guide to configuration), 3) Propagation (visual explanation of the learning cycle), 4) Training Strategies (interactive DDP vs. FSDP comparison), 5) Data Flow (visualizing data sharding), 6) Optimization & Checkpoints (interactive cards and tables), and 7) Implementation (tabbed code browser). This thematic structure is more usable than the report's linear chapters, mapping directly to a user's likely tasks and questions. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Forward/Backward Propagation. Goal: Inform/Organize. Viz: HTML/CSS Flowchart Diagram. Interaction: None, it's a static visual. Justification: A clear visual diagram makes the abstract learning cycle concrete and easy to follow. Library: HTML/Tailwind.
+        - Report Info: DDP vs FSDP comparison (Sec 4.5). Goal: Compare. Viz: Interactive Bar Chart. Interaction: Hover tooltips provide details on each metric (Memory, Complexity). Justification: A chart provides a quick visual summary of the trade-offs, which is more effective than just text. Library: Chart.js (Canvas).
+        - Report Info: Checkpointing storage options (Sec 6.5). Goal: Compare. Viz: Styled HTML Table. Interaction: None, it's for clear presentation. Justification: A table is the clearest way to present structured pros/cons. Library: HTML/Tailwind.
+        - Report Info: GPU Memory Optimization Techniques (Sec 7.3). Goal: Inform/Organize. Viz: Grid of Accordion-style cards. Interaction: Clicking a card title expands to reveal detailed text. Justification: Hides complexity by default, allowing users to explore only the techniques they are interested in. Library: Vanilla JS.
+        - Report Info: Data Sharding Process (Sec 8). Goal: Inform/Organize. Viz: HTML/CSS Diagram. Interaction: Hover effects are not needed as the visual is self-explanatory with labels. Justification: A visual diagram makes the abstract concept of data distribution across nodes and GPUs concrete and easy to understand. Library: HTML/Tailwind.
+        - Report Info: Code Skeletons (Sec 9). Goal: Inform/Organize. Viz: Tabbed interface with code blocks. Interaction: Users click tabs to switch between code files; a 'copy' button is provided for each. Justification: Organizes multiple code snippets cleanly, preventing a long wall of code and improving usability. Library: Vanilla JS.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF7;
+            color: #3C3633;
+        }
+        .nav-link {
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-link.active, .nav-link:hover {
+            color: #E0A75E;
+            background-color: rgba(224, 167, 94, 0.1);
+            transform: translateX(4px);
+        }
+        .content-card {
+            background-color: #FFFFFF;
+            border: 1px solid #EAE6E1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: box-shadow 0.3s ease;
+        }
+        .content-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 400px;
+            max-height: 50vh;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+            }
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .flow-arrow {
+            color: #76885B;
+            font-size: 2rem;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="relative min-h-screen md:flex">
+        <!-- Sidebar Navigation -->
+        <aside class="bg-white/80 backdrop-blur-sm md:border-r border-gray-200/50 w-full md:w-64 flex-shrink-0">
+            <div class="p-6">
+                <h1 class="text-xl font-bold text-[#3C3633]">PaliGemma Training</h1>
+                <p class="text-sm text-[#76885B] mt-1">An Interactive Guide</p>
+            </div>
+            <nav class="flex-grow md:block px-4 pb-4 md:pb-0 md:overflow-y-auto">
+                <a href="#overview" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Overview</a>
+                <a href="#setup" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Environment Setup</a>
+                <a href="#propagation" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Forward & Backward Propagation</a>
+                <a href="#strategies" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Training Strategies</a>
+                <a href="#dataflow" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Data Flow & Sharding</a>
+                <a href="#optimization" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Optimization & Checkpoints</a>
+                <a href="#implementation" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Implementation</a>
+                <a href="#conclusion" class="nav-link block px-4 py-2 mt-2 text-sm font-semibold rounded-lg">Conclusion & Tips</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 md:p-10">
+            
+            <!-- Section: Overview -->
+            <section id="overview" class="mb-16">
+                <div class="content-card p-8 rounded-xl">
+                    <h2 class="text-3xl font-bold mb-4 text-[#E0A75E]">Scalable Training of PaliGemma</h2>
+                    <p class="text-lg mb-6">This guide provides an interactive overview for training PaliGemma, a powerful family of vision-language models (VLMs) from Google. Training large models like PaliGemma requires significant resources, making distributed training across multiple machines and GPUs essential. This application breaks down the complex process, covering everything from model selection to advanced optimization techniques using PyTorch Lightning.</p>
+                    <div class="grid md:grid-cols-2 gap-6 text-center">
+                        <div class="bg-[#FDFBF7] p-6 rounded-lg border border-gray-200/80">
+                            <h3 class="font-bold text-lg">PaliGemma Variants</h3>
+                            <p class="mt-2 text-sm">Understand the difference between pre-trained (`pt`) checkpoints for fine-tuning and `mix` checkpoints for general inference. For custom training, `pt` variants are your starting point.</p>
+                        </div>
+                        <div class="bg-[#FDFBF7] p-6 rounded-lg border border-gray-200/80">
+                             <h3 class="font-bold text-lg">PyTorch Lightning</h3>
+                            <p class="mt-2 text-sm">Discover how this high-level wrapper simplifies the complexities of distributed training, hardware acceleration, and code organization, letting you focus on the model and data logic.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Environment Setup -->
+            <section id="setup" class="mb-16">
+                <h2 class="text-3xl font-bold mb-6">Environment Setup</h2>
+                <div class="content-card p-8 rounded-xl">
+                    <p class="mb-8">Setting up a multi-node training environment is the foundational step. It requires careful configuration of hardware, networking, and software across all machines in your cluster. This section visualizes the key components and how they interact to form a cohesive training fabric. A consistent and correctly configured environment is paramount for a successful distributed run.</p>
+                    <div class="w-full bg-[#FDFBF7] p-6 rounded-lg border border-gray-200/80">
+                        <h3 class="font-semibold text-center mb-4 text-xl">Multi-Node Architecture</h3>
+                        <div class="flex flex-col md:flex-row gap-8 items-center justify-center text-center">
+                            <!-- Node 0 -->
+                            <div class="border-2 border-dashed border-[#E0A75E] p-4 rounded-lg w-full md:w-1/3">
+                                <p class="font-bold text-lg">Node 0 (Master)</p>
+                                <p class="text-sm text-gray-600">MASTER_ADDR</p>
+                                <div class="mt-4 bg-white p-4 rounded-md shadow-inner space-y-3">
+                                    <div class="flex items-center justify-center gap-2"><span class="font-mono text-sm bg-green-100 text-green-800 px-2 py-1 rounded">GPU 0</span><span class="font-mono text-sm bg-green-100 text-green-800 px-2 py-1 rounded">GPU 1</span></div>
+                                    <p class="text-xs">Identical Software Stack</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Arrow -->
+                            <div class="text-3xl text-[#76885B]">↔</div>
+
+                            <!-- Node 1 -->
+                            <div class="border-2 border-dashed border-gray-400 p-4 rounded-lg w-full md:w-1/3">
+                                <p class="font-bold text-lg">Node 1 (Worker)</p>
+                                <p class="text-sm text-gray-600">NODE_RANK=1</p>
+                                <div class="mt-4 bg-white p-4 rounded-md shadow-inner space-y-3">
+                                    <div class="flex items-center justify-center gap-2"><span class="font-mono text-sm bg-green-100 text-green-800 px-2 py-1 rounded">GPU 0</span><span class="font-mono text-sm bg-green-100 text-green-800 px-2 py-1 rounded">GPU 1</span></div>
+                                    <p class="text-xs">Identical Software Stack</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-center mt-6">
+                            <p class="font-semibold text-[#76885B]">Shared Filesystem (NFS) or Cloud Storage (S3/GCS)</p>
+                            <p class="text-sm">Accessible by all nodes for code, data, and checkpoints.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Section: Forward & Backward Propagation -->
+            <section id="propagation" class="mb-16">
+                <h2 class="text-3xl font-bold mb-6">The Learning Cycle: Forward & Backward Propagation</h2>
+                <div class="content-card p-8 rounded-xl">
+                    <p class="mb-4">At its core, a neural network learns in a two-step cycle: it makes a guess (forward pass) and then learns from its mistake (backward pass). This section visually breaks down that fundamental process, which repeats thousands of times to train a model like PaliGemma.</p>
+                    <div class="w-full bg-[#FDFBF7] p-6 rounded-lg border border-gray-200/80 mt-6">
+                        <div class="flex flex-col items-center text-center">
+                            <!-- Step 1 -->
+                            <div class="bg-white p-4 rounded-lg shadow w-full md:w-3/4">
+                                <h3 class="font-bold text-lg text-[#3C3633]">1. Forward Propagation (The Guess)</h3>
+                                <p class="text-sm mt-1">Input data (image + text) flows forward through the network layers. Each layer performs a calculation, until the final layer produces a prediction.</p>
+                            </div>
+                            <div class="flow-arrow my-2">↓</div>
+                            <!-- Step 2 -->
+                            <div class="bg-white p-4 rounded-lg shadow w-full md:w-3/4">
+                                <h3 class="font-bold text-lg text-[#3C3633]">2. Calculate Loss (The Mistake)</h3>
+                                <p class="text-sm mt-1">The model's prediction is compared to the correct answer (the label). The difference is quantified as a single number called the "loss" or "error."</p>
+                            </div>
+                            <div class="flow-arrow my-2">↓</div>
+                             <!-- Step 3 -->
+                            <div class="bg-white p-4 rounded-lg shadow w-full md:w-3/4">
+                                <h3 class="font-bold text-lg text-[#3C3633]">3. Backward Propagation (The Learning)</h3>
+                                <p class="text-sm mt-1">The loss is sent backward through the network. Calculus (backpropagation) is used to calculate the gradient for each parameter, determining its contribution to the error.</p>
+                            </div>
+                            <div class="flow-arrow my-2">↓</div>
+                            <!-- Step 4 -->
+                            <div class="bg-white p-4 rounded-lg shadow w-full md:w-3/4">
+                                <h3 class="font-bold text-lg text-[#3C3633]">4. Update Weights (The Adjustment)</h3>
+                                <p class="text-sm mt-1">An optimizer uses the gradients to make small adjustments to all the model's weights, nudging it to make a better prediction next time.</p>
+                            </div>
+                            <div class="flow-arrow my-2 text-xl transform rotate-90">↻</div>
+                             <p class="text-sm font-semibold text-gray-600">This Cycle Repeats Thousands of Times</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Training Strategies -->
+            <section id="strategies" class="mb-16">
+                <h2 class="text-3xl font-bold mb-6">Training Strategies: DDP vs. FSDP</h2>
+                <div class="content-card p-8 rounded-xl">
+                    <p class="mb-8">PyTorch Lightning offers powerful strategies for distributing your training workload. The two primary choices for multi-node training are DistributedDataParallel (DDP) and Fully Sharded Data Parallel (FSDP). DDP is a robust, general-purpose strategy, while FSDP is designed for training extremely large models that won't fit in a single GPU's memory. The chart below highlights their key trade-offs to help you choose the right one for your needs.</p>
+                     <div class="chart-container">
+                        <canvas id="strategyChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Data Flow & Sharding -->
+            <section id="dataflow" class="mb-16">
+                <h2 class="text-3xl font-bold mb-6">Data Flow & Sharding</h2>
+                <div class="content-card p-8 rounded-xl">
+                    <p class="mb-8">In a distributed setup, it's crucial that each GPU processes a unique slice of the dataset to avoid redundant work. PyTorch Lightning automates this by using a `DistributedSampler`. This sampler divides the dataset indices among all participating processes (GPUs). The `DataLoader` on each GPU then fetches only the data corresponding to its assigned indices, ensuring an efficient and correct training epoch.</p>
+                    <div class="w-full bg-[#FDFBF7] p-6 rounded-lg border border-gray-200/80">
+                         <h3 class="font-semibold text-center mb-6 text-xl">How Data is Sharded Across GPUs</h3>
+                         <div class="flex flex-col items-center gap-4">
+                            <!-- Main Dataset -->
+                            <div class="p-4 rounded-lg bg-gray-200 text-gray-800 font-bold">Full Dataset (e.g., 1000 samples)</div>
+                            <div class="text-3xl text-[#76885B] transform rotate-90 md:rotate-0">↓</div>
+                            <!-- Nodes -->
+                            <div class="w-full flex flex-col md:flex-row gap-4 justify-center">
+                                <!-- Node 0 -->
+                                <div class="w-full border border-dashed border-gray-400 p-4 rounded-lg">
+                                    <p class="text-center font-semibold">Node 0</p>
+                                    <div class="mt-2 flex flex-col sm:flex-row gap-4 justify-around">
+                                        <div class="bg-[#E0A75E]/20 p-3 rounded text-center"><p class="font-bold">GPU 0</p><p class="text-sm">Shard 1 (Samples 1-250)</p></div>
+                                        <div class="bg-[#E0A75E]/20 p-3 rounded text-center"><p class="font-bold">GPU 1</p><p class="text-sm">Shard 2 (Samples 251-500)</p></div>
+                                    </div>
+                                </div>
+                                <!-- Node 1 -->
+                                <div class="w-full border border-dashed border-gray-400 p-4 rounded-lg">
+                                    <p class="text-center font-semibold">Node 1</p>
+                                    <div class="mt-2 flex flex-col sm:flex-row gap-4 justify-around">
+                                        <div class="bg-[#76885B]/20 p-3 rounded text-center"><p class="font-bold">GPU 2</p><p class="text-sm">Shard 3 (Samples 501-750)</p></div>
+                                        <div class="bg-[#76885B]/20 p-3 rounded text-center"><p class="font-bold">GPU 3</p><p class="text-sm">Shard 4 (Samples 751-1000)</p></div>
+                                    </div>
+                                </div>
+                            </div>
+                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Optimization & Checkpoints -->
+            <section id="optimization" class="mb-16">
+                 <h2 class="text-3xl font-bold mb-6">Optimization & Checkpointing</h2>
+                 <div class="content-card p-8 rounded-xl">
+                    <p class="mb-8">Training large models efficiently requires a suite of optimization techniques to manage GPU memory. Furthermore, robust checkpointing is essential for saving progress and ensuring fault tolerance in long-running jobs. Explore the most common techniques and storage strategies below.</p>
+                    
+                    <h3 class="font-semibold text-xl mb-4 text-[#E0A75E]">GPU Memory Optimization Techniques</h3>
+                    <div id="accordion-container" class="space-y-3 mb-8">
+                        <!-- Accordion Items will be injected here by JS -->
+                    </div>
+
+                    <h3 class="font-semibold text-xl mb-4 text-[#E0A75E]">Checkpoint Storage Options</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr>
+                                    <th class="p-3 font-semibold bg-gray-100 border-b">Storage</th>
+                                    <th class="p-3 font-semibold bg-gray-100 border-b">Pros</th>
+                                    <th class="p-3 font-semibold bg-gray-100 border-b">Cons</th>
+                                    <th class="p-3 font-semibold bg-gray-100 border-b">Scalability</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">
+                                <tr><td class="p-3 border-b">Local (Non-Shared)</td><td class="p-3 border-b">Simple for single node.</td><td class="p-3 border-b">Inaccessible across nodes.</td><td class="p-3 border-b text-red-600">Poor</td></tr>
+                                <tr><td class="p-3 border-b">Shared NFS</td><td class="p-3 border-b">Centralized, consistent.</td><td class="p-3 border-b">I/O bottleneck, single point of failure.</td><td class="p-3 border-b text-yellow-600">Good</td></tr>
+                                <tr><td class="p-3 border-b">Cloud (S3, GCS)</td><td class="p-3 border-b">Highly scalable, durable, accessible.</td><td class="p-3 border-b">Network dependency, potential egress costs.</td><td class="p-3 border-b text-green-600">Excellent</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                 </div>
+            </section>
+
+            <!-- Section: Implementation -->
+            <section id="implementation" class="mb-16">
+                 <h2 class="text-3xl font-bold mb-6">Implementation Skeletons</h2>
+                 <div class="content-card rounded-xl">
+                     <div class="p-8">
+                        <p class="mb-6">This section provides the practical code for implementing a multi-node training job with PyTorch Lightning. The code is organized into logical parts: the `LightningModule` which contains the core model logic, the `Trainer` script which configures the run, and the `torchrun` command used to launch it across all machines. Use the tabs to navigate between the different code snippets.</p>
+                     </div>
+                    <div class="px-8">
+                        <div class="border-b border-gray-200">
+                            <nav id="code-tabs" class="-mb-px flex space-x-6" aria-label="Tabs">
+                                <!-- Tab buttons will be injected by JS -->
+                            </nav>
+                        </div>
+                    </div>
+                    <div id="code-content-container" class="relative p-2 md:p-4 bg-gray-800 rounded-b-xl text-white">
+                        <!-- Code content will be injected by JS -->
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Section: Conclusion -->
+            <section id="conclusion" class="mb-16">
+                <h2 class="text-3xl font-bold mb-6">Conclusion & Debugging Tips</h2>
+                <div class="content-card p-8 rounded-xl">
+                    <p class="mb-6">Successfully training PaliGemma at scale is an iterative process blending model understanding, framework knowledge, and infrastructure management. PyTorch Lightning abstracts much of the complexity, but effective debugging remains a critical skill. Start simple, scale incrementally, and use verbose logging to diagnose issues.</p>
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div class="bg-[#FDFBF7] p-4 rounded-lg border border-gray-200/80"><h4 class="font-semibold">Incremental Scaling</h4><p class="text-sm mt-1">Start with 1 GPU, then multi-GPU on one node, then multi-node.</p></div>
+                        <div class="bg-[#FDFBF7] p-4 rounded-lg border border-gray-200/80"><h4 class="font-semibold">Verbose Logging</h4><p class="text-sm mt-1">Use `NCCL_DEBUG=INFO` to see communication details between GPUs.</p></div>
+                        <div class="bg-[#FDFBF7] p-4 rounded-lg border border-gray-200/80"><h4 class="font-semibold">Environment Consistency</h4><p class="text-sm mt-1">Ensure library versions (PyTorch, Lightning, etc.) are identical on all nodes.</p></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    
+    <button id="back-to-top" class="fixed bottom-5 right-5 bg-[#E0A75E] text-white p-3 rounded-full shadow-lg hidden hover:bg-[#c8924a] transition-all">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+    </button>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    
+    // --- Data for visualizations ---
+    const optimizationData = [
+        { title: 'Mixed Precision Training', content: 'Uses `bfloat16` or `float16` to nearly halve GPU memory usage and speed up computation on compatible hardware. Lightning handles this automatically with `precision="bf16-mixed"`.' },
+        { title: 'Gradient Accumulation', content: 'Simulates a larger batch size without increasing memory. Gradients are accumulated over several smaller forward/backward passes before an optimizer step is performed. Set with `accumulate_grad_batches=K`.' },
+        { title: 'Activation Checkpointing', content: 'Trades compute for memory. Instead of storing all intermediate activations, it recomputes them during the backward pass. This can significantly reduce memory usage in deep networks.' },
+        { title: 'Model Sharding (FSDP)', content: 'The core of the FSDP strategy. It shards model parameters, gradients, and optimizer states across all available GPUs, allowing you to train models that are much larger than a single GPU\'s memory.' },
+        { title: 'CPU Offloading', content: 'An extension of FSDP/DeepSpeed where inactive parameters, gradients, or optimizer states are moved to CPU RAM, further increasing memory capacity at the cost of CPU-GPU transfer latency.' }
+    ];
+
+    const codeSnippets = {
+        'LightningModule': {
+            lang: 'python',
+            code: `import pytorch_lightning as pl
+import torch
+# from your_project.utils import load_paligemma_model_and_processor
+
+class PaliGemmaLightningModule(pl.LightningModule):
+    def __init__(self, model_name_or_path: str, learning_rate: float = 5e-5, **kwargs):
+        super().__init__()
+        self.save_hyperparameters() 
+        self.model, self.processor = load_paligemma_model_and_processor(
+            model_id=self.hparams.model_name_or_path
+        )
+        
+    def forward(self, **inputs):
+        return self.model(**inputs)
+
+    def _calculate_loss(self, batch, stage_name):
+        outputs = self(**batch)
+        loss = outputs.loss
+        self.log(f"{stage_name}_loss", loss, prog_bar=True, sync_dist=True)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        return self._calculate_loss(batch, "train")
+
+    def validation_step(self, batch, batch_idx):
+        return self._calculate_loss(batch, "val")
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate)
+        return optimizer`
+        },
+        'Trainer Script': {
+            lang: 'python',
+            code: `import pytorch_lightning as pl
+from pytorch_lightning.strategies import DDPStrategy, FSDPStrategy
+from pytorch_lightning.callbacks import ModelCheckpoint
+# from lightning_module import PaliGemmaLightningModule
+
+def main_training_routine(args):
+    pali_gemma_module = PaliGemmaLightningModule(...)
+
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=args.checkpoint_dir, # "s3://bucket/..."
+        monitor="val_loss",
+        save_last=True
+    )
+
+    strategy = FSDPStrategy(state_dict_type="sharded") if args.strategy == "fsdp" else DDPStrategy()
+
+    trainer = pl.Trainer(
+        accelerator="gpu",
+        devices=args.gpus_per_node,
+        num_nodes=args.num_nodes,
+        strategy=strategy,
+        precision=args.precision, # "bf16-mixed"
+        max_epochs=args.num_train_epochs,
+        callbacks=[checkpoint_callback],
+    )
+
+    trainer.fit(pali_gemma_module, ckpt_path=args.resume_ckpt_path)
+
+if __name__ == '__main__':
+    # Parse args and call main_training_routine()
+    pass
+`
+        },
+        'torchrun Launch': {
+            lang: 'bash',
+            code: `# Run this command on each node
+# Set CURRENT_NODE_RANK=0 on master, 1 on worker, etc.
+
+torchrun \\
+    --nproc_per_node=<gpus_on_this_node> \\
+    --nnodes=<total_nodes> \\
+    --node_rank=$CURRENT_NODE_RANK \\
+    --master_addr=<ip_of_master_node> \\
+    --master_port=29500 \\
+    main_trainer_script.py \\
+    --strategy "fsdp" \\
+    --precision "bf16-mixed" \\
+    --checkpoint_dir "s3://your-bucket/checkpoints"`
+        }
+    };
+    
+    // --- Accordion for Optimization Techniques ---
+    const accordionContainer = document.getElementById('accordion-container');
+    optimizationData.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'border border-gray-200 rounded-lg';
+        div.innerHTML = `
+            <button class="accordion-button w-full text-left p-4 font-semibold flex justify-between items-center hover:bg-gray-50">
+                <span>${item.title}</span>
+                <svg class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            <div class="accordion-content">
+                <p class="p-4 pt-0 text-gray-700">${item.content}</p>
+            </div>
+        `;
+        accordionContainer.appendChild(div);
+    });
+
+    accordionContainer.addEventListener('click', function(e) {
+        const button = e.target.closest('.accordion-button');
+        if (button) {
+            const content = button.nextElementSibling;
+            const icon = button.querySelector('svg');
+            
+            if (content.style.maxHeight) {
+                content.style.maxHeight = null;
+                icon.classList.remove('rotate-180');
+            } else {
+                content.style.maxHeight = content.scrollHeight + 'px';
+                icon.classList.add('rotate-180');
+            }
+        }
+    });
+
+    // --- Chart.js for Strategy Comparison ---
+    const ctx = document.getElementById('strategyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['GPU Memory Usage', 'Network Overhead', 'Configuration Complexity', 'Model Size Scalability'],
+            datasets: [
+                {
+                    label: 'DDP',
+                    data: [8, 6, 3, 5],
+                    backgroundColor: 'rgba(224, 167, 94, 0.6)',
+                    borderColor: 'rgba(224, 167, 94, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'FSDP',
+                    data: [3, 8, 7, 10],
+                    backgroundColor: 'rgba(118, 136, 91, 0.6)',
+                    borderColor: 'rgba(118, 136, 91, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    max: 10,
+                    title: {
+                        display: true,
+                        text: 'Relative Score (Lower is simpler/less, Higher is more complex/more)'
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'DDP vs. FSDP: A Relative Comparison',
+                    font: { size: 18 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.x !== null) {
+                                label += context.parsed.x;
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    // --- Code Tabs ---
+    const tabsContainer = document.getElementById('code-tabs');
+    const contentContainer = document.getElementById('code-content-container');
+    let firstTab = true;
+
+    for (const [key, value] of Object.entries(codeSnippets)) {
+        const tabButton = document.createElement('button');
+        tabButton.textContent = key;
+        tabButton.className = 'code-tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm';
+        tabButton.dataset.target = key;
+
+        if (firstTab) {
+            tabButton.classList.add('border-[#E0A75E]', 'text-[#E0A75E]');
+            firstTab = false;
+        } else {
+            tabButton.classList.add('border-transparent', 'text-gray-400', 'hover:text-gray-200', 'hover:border-gray-300');
+        }
+        
+        tabsContainer.appendChild(tabButton);
+
+        const contentDiv = document.createElement('div');
+        contentDiv.id = key;
+        contentDiv.className = 'code-content';
+        contentDiv.innerHTML = `
+            <button class="copy-btn absolute top-4 right-4 bg-gray-700 hover:bg-gray-600 text-white font-bold py-1 px-3 text-xs rounded transition">Copy</button>
+            <pre><code class="language-${value.lang}">${value.code.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>
+        `;
+        if (key !== 'LightningModule') contentDiv.classList.add('hidden');
+        contentContainer.appendChild(contentDiv);
+    }
+    
+    tabsContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('code-tab-button')) {
+            const targetId = e.target.dataset.target;
+            
+            tabsContainer.querySelectorAll('.code-tab-button').forEach(btn => {
+                btn.classList.remove('border-[#E0A75E]', 'text-[#E0A75E]');
+                btn.classList.add('border-transparent', 'text-gray-400', 'hover:text-gray-200', 'hover:border-gray-300');
+            });
+            
+            e.target.classList.add('border-[#E0A75E]', 'text-[#E0A75E]');
+            e.target.classList.remove('border-transparent', 'text-gray-400');
+            
+            contentContainer.querySelectorAll('.code-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            
+            document.getElementById(targetId).classList.remove('hidden');
+        }
+    });
+
+    contentContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('copy-btn')) {
+            const pre = e.target.nextElementSibling;
+            const code = pre.querySelector('code').innerText;
+            const el = document.createElement('textarea');
+            el.value = code;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+
+            e.target.textContent = 'Copied!';
+            setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+        }
+    });
+
+    // --- Back to Top Button ---
+    const backToTopButton = document.getElementById('back-to-top');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 300) {
+            backToTopButton.classList.remove('hidden');
+        } else {
+            backToTopButton.classList.add('hidden');
+        }
+    });
+    backToTopButton.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    
+    // --- Active Nav Link Scrolling ---
+    const sections = document.querySelectorAll('section');
+    const navLinks = document.querySelectorAll('.nav-link');
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').substring(1) === entry.target.id) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        });
+    }, { rootMargin: '-30% 0px -70% 0px' });
+
+    sections.forEach(section => {
+        observer.observe(section);
+    });
+
+});
+</script>
+
+</body>
+</html>

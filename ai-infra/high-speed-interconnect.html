@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Speed Interconnects: Powering AI & HPC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #EDF6F9; /* Very light blue, derived for page background */
+            color: #073B4C; /* Dark blue for text */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* Max width for readability */
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* Base height */
+            max-height: 400px; /* Max height */
+        }
+        @media (min-width: 768px) { /* md breakpoint */
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .section-title {
+            font-size: 2.25rem; /* 36px */
+            line-height: 2.5rem; /* 40px */
+            font-weight: 700;
+            color: #0077B6; /* Primary blue */
+            margin-bottom: 1.5rem; /* mb-6 */
+            text-align: center;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
+            padding: 1.5rem; /* p-6 */
+            margin-bottom: 1.5rem; /* mb-6 */
+        }
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #0077B6;
+        }
+        .flowchart-node {
+            background-color: #CAF0F8;
+            border: 2px solid #00B4D8;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            min-width: 150px;
+        }
+        .flowchart-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #0077B6;
+            margin: 0.5rem 0;
+        }
+        .tooltip-custom {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-[#0077B6] text-white py-8 shadow-lg">
+        <div class="container mx-auto px-6 text-center">
+            <h1 class="text-4xl md:text-5xl font-bold leading-tight">High-Speed Interconnects</h1>
+            <p class="text-xl md:text-2xl mt-2">Powering the Future of Artificial Intelligence and High-Performance Computing</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-8">
+
+        <section id="need-for-speed" class="mb-12">
+            <h2 class="section-title">The Imperative for Speed</h2>
+            <div class="card">
+                <p class="text-lg leading-relaxed mb-4">
+                    The contemporary computational landscape is characterized by an unrelenting escalation in data volumes and processing requirements. This surge is predominantly driven by advancements in Artificial Intelligence (AI) 🧠, Machine Learning (ML), and High-Performance Computing (HPC) 💻.
+                </p>
+                <p class="text-lg leading-relaxed">
+                    In these environments, interconnect technologies form the critical data pathways. Their performance, specifically bandwidth and latency, directly dictates overall system efficiency and scalability. This infographic explores four prominent high-speed interconnects: PCIe, NVLink, InfiniBand, and RoCEv2.
+                </p>
+            </div>
+        </section>
+
+        <section id="landscape-glance" class="mb-12">
+            <h2 class="section-title">Interconnect Landscape at a Glance</h2>
+            <div class="card">
+                <p class="text-lg leading-relaxed mb-6 text-center">
+                    A high-level comparison of the latest generation capabilities for each technology, highlighting their maximum bidirectional bandwidth and typical lowest end-to-end latency ranges.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-[#90E0EF]">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-[#073B4C] uppercase tracking-wider">Technology (Latest Gen.)</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-[#073B4C] uppercase tracking-wider">Max. Bidirectional Bandwidth</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-[#073B4C] uppercase tracking-wider">Typical Low End-to-End Latency</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-semibold">PCIe 7.0 (x16)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">~512 GB/s</td>
+                                <td class="px-6 py-4 whitespace-nowrap">&lt;100 ns (projected)</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-semibold">NVLink 5.0 (Blackwell)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">1.8 TB/s</td>
+                                <td class="px-6 py-4 whitespace-nowrap">&lt;50-100 ns (estimated)</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-semibold">InfiniBand XDR (4x)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">~200 GB/s (800 Gbps port)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">&lt;0.5 µs - 2 µs (estimated)</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap font-semibold">RoCEv2 (800GbE)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">~200 GB/s (800 Gbps port)</td>
+                                <td class="px-6 py-4 whitespace-nowrap">&lt;1 µs - 5 µs</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                 <p class="text-sm mt-4 text-gray-600">Note: Bandwidth for IB/RoCE is port-based aggregate; PCIe/NVLink are device/GPU aggregate. Latencies are estimates/targets and can vary significantly based on system configuration and workload.</p>
+            </div>
+        </section>
+
+        <section id="bandwidth-evolution" class="mb-12">
+            <h2 class="section-title">Bandwidth Evolution & Projections</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="card">
+                    <h3 class="text-xl font-semibold mb-4 text-center text-[#0077B6]">PCIe Bidirectional Bandwidth Growth (x16 Slot)</h3>
+                    <p class="text-sm text-gray-700 mb-2 text-center">Illustrating the doubling of bandwidth with each PCIe generation, crucial for general peripheral and accelerator connectivity.</p>
+                    <div class="chart-container">
+                        <canvas id="pcieBandwidthChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="text-xl font-semibold mb-4 text-center text-[#0077B6]">Peak Bidirectional Bandwidth Comparison (Latest Generations)</h3>
+                     <p class="text-sm text-gray-700 mb-2 text-center">Comparing the maximum achievable bidirectional bandwidth across the leading edge of these interconnect technologies.</p>
+                    <div class="chart-container">
+                        <canvas id="maxBandwidthComparisonChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="latency-imperative" class="mb-12">
+            <h2 class="section-title">The Latency Imperative</h2>
+            <div class="card">
+                <h3 class="text-xl font-semibold mb-4 text-center text-[#0077B6]">Typical Low-End Latency Comparison</h3>
+                <p class="text-sm text-gray-700 mb-6 text-center">Lower latency is critical for applications with frequent, small data exchanges. This chart shows typical *lowest reported* end-to-end latencies. Actuals vary.</p>
+                <div class="chart-container">
+                    <canvas id="latencyComparisonChart"></canvas>
+                </div>
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
+                    <div>
+                        <p class="stat-number">~50 ns</p>
+                        <p class="text-md text-gray-700">Target for NVLink 5.0 GPU-GPU</p>
+                    </div>
+                    <div>
+                        <p class="stat-number">&lt;100 ns</p>
+                        <p class="text-md text-gray-700">InfiniBand Switch Hops</p>
+                    </div>
+                </div>
+                 <p class="text-sm mt-4 text-gray-600">Note: PCIe latencies are component-to-component. NVLink is GPU-to-GPU. InfiniBand and RoCEv2 are end-to-end network latencies, highly dependent on fabric configuration and scale.</p>
+            </div>
+        </section>
+
+        <section id="tech-deep-dive" class="mb-12">
+            <h2 class="section-title">Technology Deep Dive & Use Cases</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="card flex flex-col">
+                    <h3 class="text-2xl font-bold mb-3 text-[#0077B6]">PCI Express (PCIe)</h3>
+                    <p class="stat-number mb-2">~512 <span class="text-lg">GB/s</span></p>
+                    <p class="text-sm text-gray-500 mb-3">(PCIe 7.0 x16 Bidirectional)</p>
+                    <h4 class="font-semibold mt-2 mb-1 text-[#00B4D8]">Primary Use Cases:</h4>
+                    <ul class="list-disc list-inside text-sm space-y-1 text-gray-700 flex-grow">
+                        <li>GPUs (Graphics & Compute) 🎮</li>
+                        <li>NVMe SSDs (High-Speed Storage) 💾</li>
+                        <li>Network Interface Cards (NICs) 🌐</li>
+                        <li>General Peripherals & Accelerators</li>
+                    </ul>
+                    <p class="mt-4 pt-2 border-t border-gray-200 text-sm font-semibold text-[#073B4C]">Defining Trait: Universal peripheral interconnect, CPU-mediated.</p>
+                </div>
+                <div class="card flex flex-col">
+                    <h3 class="text-2xl font-bold mb-3 text-[#0077B6]">NVIDIA NVLink</h3>
+                    <p class="stat-number mb-2">1.8 <span class="text-lg">TB/s</span></p>
+                    <p class="text-sm text-gray-500 mb-3">(NVLink 5.0 per GPU Bidirectional)</p>
+                    <h4 class="font-semibold mt-2 mb-1 text-[#00B4D8]">Primary Use Cases:</h4>
+                    <ul class="list-disc list-inside text-sm space-y-1 text-gray-700 flex-grow">
+                        <li>GPU-to-GPU Communication (NVIDIA) 🔗</li>
+                        <li>Large-Scale AI Model Training 🧠</li>
+                        <li>High-Performance Computing (HPC) 💻</li>
+                        <li>Real-Time AI Inference</li>
+                    </ul>
+                    <p class="mt-4 pt-2 border-t border-gray-200 text-sm font-semibold text-[#073B4C]">Defining Trait: Proprietary, direct, ultra-low latency GPU link.</p>
+                </div>
+                <div class="card flex flex-col">
+                    <h3 class="text-2xl font-bold mb-3 text-[#0077B6]">InfiniBand (IB)</h3>
+                    <p class="stat-number mb-2">~200 <span class="text-lg">GB/s</span></p>
+                    <p class="text-sm text-gray-500 mb-3">(XDR 4x Port Bidirectional)</p>
+                    <h4 class="font-semibold mt-2 mb-1 text-[#00B4D8]">Primary Use Cases:</h4>
+                    <ul class="list-disc list-inside text-sm space-y-1 text-gray-700 flex-grow">
+                        <li>HPC System Fabric ⚙️</li>
+                        <li>Large AI Training Clusters</li>
+                        <li>Low-Latency RDMA Applications</li>
+                        <li>Scalable Supercomputing</li>
+                    </ul>
+                    <p class="mt-4 pt-2 border-t border-gray-200 text-sm font-semibold text-[#073B4C]">Defining Trait: Native RDMA, very low latency, HPC-focused fabric.</p>
+                </div>
+                <div class="card flex flex-col">
+                    <h3 class="text-2xl font-bold mb-3 text-[#0077B6]">RoCEv2</h3>
+                    <p class="stat-number mb-2">~200 <span class="text-lg">GB/s</span></p>
+                    <p class="text-sm text-gray-500 mb-3">(800GbE Port Bidirectional)</p>
+                    <h4 class="font-semibold mt-2 mb-1 text-[#00B4D8]">Primary Use Cases:</h4>
+                    <ul class="list-disc list-inside text-sm space-y-1 text-gray-700 flex-grow">
+                        <li>Data Center Networking 🏢</li>
+                        <li>AI/ML over Ethernet</li>
+                        <li>Storage Area Networks (SANs)</li>
+                        <li>Hyperscale Deployments</li>
+                    </ul>
+                    <p class="mt-4 pt-2 border-t border-gray-200 text-sm font-semibold text-[#073B4C]">Defining Trait: RDMA over Converged Ethernet, requires lossless fabric.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="pam4-shift" class="mb-12">
+            <h2 class="section-title">The Signaling Shift: PAM4</h2>
+            <div class="card">
+                <p class="text-lg leading-relaxed mb-4">
+                    To achieve higher data rates, many modern interconnects are adopting Pulse Amplitude Modulation with 4 levels (PAM4) signaling. PAM4 doubles the data rate compared to traditional Non-Return-to-Zero (NRZ) signaling for the same fundamental frequency by encoding two bits per symbol instead of one.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center mb-6">
+                    <div class="text-center">
+                        <h4 class="font-semibold text-lg mb-2 text-[#00B4D8]">NRZ (Non-Return-to-Zero)</h4>
+                        <div class="bg-gray-100 p-4 rounded-lg">
+                            <div class="h-16 border-2 border-[#0077B6] relative">
+                                <div class="absolute left-0 w-1/4 h-1/2 bottom-0 bg-[#90E0EF]"></div>
+                                <div class="absolute left-1/4 w-1/4 h-full top-0 bg-[#90E0EF]"></div>
+                                <div class="absolute left-2/4 w-1/4 h-1/2 bottom-0 bg-[#90E0EF]"></div>
+                                <div class="absolute left-3/4 w-1/4 h-full top-0 bg-[#90E0EF]"></div>
+                                <span class="absolute -bottom-6 left-0 right-0 text-sm text-gray-600">2 Signal Levels (0 or 1)</span>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-sm text-gray-700">1 bit per symbol</p>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="font-semibold text-lg mb-2 text-[#00B4D8]">PAM4 (Pulse Amplitude Modulation 4-level)</h4>
+                        <div class="bg-gray-100 p-4 rounded-lg">
+                             <div class="h-16 border-2 border-[#0077B6] relative">
+                                <div class="absolute left-0 w-1/4 h-1/4 bottom-0 bg-[#ADE8F4]"></div> <div class="absolute left-1/4 w-1/4 h-2/4 bottom-0 bg-[#90E0EF]"></div> <div class="absolute left-2/4 w-1/4 h-3/4 bottom-0 bg-[#00B4D8]"></div> <div class="absolute left-3/4 w-1/4 h-full bottom-0 bg-[#0077B6]"></div>   <span class="absolute -bottom-6 left-0 right-0 text-sm text-gray-600">4 Signal Levels (00, 01, 10, or 11)</span>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-sm text-gray-700">2 bits per symbol = Double Data Rate</p>
+                    </div>
+                </div>
+                <p class="text-md leading-relaxed">
+                    While PAM4 enables significant bandwidth increases, it introduces complexities like higher signal-to-noise ratio (SNR) requirements and the need for Forward Error Correction (FEC).
+                </p>
+                <h4 class="font-semibold mt-4 mb-2 text-[#00B4D8]">Key Adopters of PAM4:</h4>
+                <ul class="list-disc list-inside text-gray-700">
+                    <li>PCIe 6.0 and newer generations</li>
+                    <li>InfiniBand HDR, NDR, and XDR</li>
+                    <li>High-Speed Ethernet (200GbE and above, forming the basis for RoCEv2)</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="choosing-interconnect" class="mb-12">
+            <h2 class="section-title">Choosing Your Interconnect</h2>
+            <div class="card">
+                <p class="text-lg leading-relaxed mb-6 text-center">
+                    The optimal interconnect depends heavily on specific application needs, scale, budget, and existing infrastructure. Here's a simplified guide:
+                </p>
+                <div class="space-y-4 md:space-y-0 md:flex md:flex-col md:items-center">
+                    <div class="flowchart-node shadow-lg"><strong>Primary Need?</strong></div>
+                    
+                    <div class="md:flex md:justify-around w-full">
+                        <div class="flex flex-col items-center my-4 md:my-0">
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node">Universal Peripheral? <br/> (SSDs, NICs, single GPU)</div>
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node bg-[#ADE8F4] text-[#073B4C] font-semibold">➡️ PCIe</div>
+                        </div>
+
+                        <div class="flex flex-col items-center my-4 md:my-0">
+                             <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node">Max NVIDIA GPU-to-GPU? <br/> (Large AI Models)</div>
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node bg-[#ADE8F4] text-[#073B4C] font-semibold">➡️ NVLink</div>
+                        </div>
+                        
+                        <div class="flex flex-col items-center my-4 md:my-0">
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node">Lowest Latency RDMA Fabric? <br/> (HPC, Specialized AI)</div>
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node bg-[#ADE8F4] text-[#073B4C] font-semibold">➡️ InfiniBand</div>
+                        </div>
+
+                        <div class="flex flex-col items-center my-4 md:my-0">
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node">RDMA over Ethernet? <br/> (Data Centers, Hyperscale)</div>
+                            <div class="flowchart-arrow">↓</div>
+                            <div class="flowchart-node bg-[#ADE8F4] text-[#073B4C] font-semibold">➡️ RoCEv2</div>
+                        </div>
+                    </div>
+                </div>
+                 <p class="text-sm mt-6 text-gray-600">This is a high-level guide. Cost, complexity of lossless Ethernet (for RoCEv2), ecosystem, and specific workload profiles are also critical factors.</p>
+            </div>
+        </section>
+
+        <section id="future-outlook" class="mb-12">
+            <h2 class="section-title">Future Outlook</h2>
+            <div class="card">
+                <p class="text-lg leading-relaxed mb-4">
+                    The drive for higher performance is relentless, fueled by AI and HPC. Key trends shaping the future of interconnects include:
+                </p>
+                <ul class="list-disc list-inside space-y-2 text-gray-700 mb-4">
+                    <li><strong>Optical Interconnects:</strong> As electrical signaling faces limits, on-board optics, co-packaged optics (CPO), and silicon photonics are becoming crucial for overcoming copper's limitations in speed, reach, and power.</li>
+                    <li><strong>Convergence of Technologies:</strong> Shared adoption of PAM4 signaling and FEC techniques across different interconnects indicates common solutions to physical layer challenges.</li>
+                    <li><strong>Resource Disaggregation:</strong> Technologies like Compute Express Link (CXL), built on the PCIe physical layer, are enabling more flexible and composable system architectures with shared memory and resources.</li>
+                </ul>
+                <div class="text-center mt-6">
+                    <p class="text-gray-700">The interconnect landscape will continue to evolve rapidly, with software and management ecosystems playing an increasingly vital role in harnessing the full potential of these advanced hardware technologies.</p>
+                    <p class="mt-4"><span class="stat-number">512 <span class="text-xl">GB/s</span></span></p>
+                    <p class="text-md text-gray-700">Projected bidirectional bandwidth for a single PCIe 7.0 x16 slot, showcasing the ongoing scaling.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-[#073B4C] text-[#CAF0F8] py-8 mt-12">
+        <div class="container mx-auto px-6 text-center">
+            <p class="text-sm">&copy; 2025 High-Speed Interconnect Analysis. Data derived from "A Comparative Analysis of High-Speed Interconnect Technologies".</p>
+            <p class="text-xs mt-1">This infographic is for illustrative purposes. Always consult detailed specifications for design decisions.</p>
+        </div>
+    </footer>
+
+    <script>
+        const CHART_COLORS = {
+            primary: '#0077B6',    // Main Blue
+            secondary: '#00B4D8',  // Lighter Blue
+            tertiary: '#90E0EF',   // Even Lighter Blue
+            accent: '#ADE8F4',     // Lightest Blue/Accent
+            text: '#073B4C'        // Dark Blue for labels
+        };
+
+        // Helper function to wrap labels
+        function wrapLabel(str, maxWidth) {
+            if (str.length <= maxWidth) {
+                return str;
+            }
+            const words = str.split(' ');
+            let currentLine = '';
+            const lines = [];
+            for (const word of words) {
+                if ((currentLine + word).length <= maxWidth || currentLine.length === 0) {
+                    currentLine += (currentLine.length === 0 ? '' : ' ') + word;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                }
+            }
+            lines.push(currentLine);
+            return lines;
+        }
+        
+        const tooltipTitleCallback = function(tooltipItems) {
+            const item = tooltipItems[0];
+            let label = item.chart.data.labels[item.dataIndex];
+            if (Array.isArray(label)) {
+              return label.join(' ');
+            } else {
+              return label;
+            }
+        };
+
+        // Chart.js default options
+        const defaultChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: CHART_COLORS.text
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: tooltipTitleCallback
+                    },
+                    backgroundColor: 'rgba(7,59,76,0.9)', // Dark blue, slightly transparent
+                    titleColor: '#CAF0F8',
+                    bodyColor: '#EDF6F9',
+                    padding: 10,
+                    cornerRadius: 4,
+                    titleFont: { weight: 'bold' },
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: CHART_COLORS.text,
+                        font: { size: 10 }
+                    },
+                    grid: {
+                        color: 'rgba(0, 119, 182, 0.1)' // Lighter grid lines
+                    }
+                },
+                y: {
+                    ticks: {
+                        color: CHART_COLORS.text
+                    },
+                    grid: {
+                        color: 'rgba(0, 119, 182, 0.1)'
+                    },
+                    beginAtZero: true
+                }
+            }
+        };
+
+        // PCIe Bandwidth Chart
+        const pcieBwCtx = document.getElementById('pcieBandwidthChart').getContext('2d');
+        new Chart(pcieBwCtx, {
+            type: 'line',
+            data: {
+                labels: ['PCIe 4.0', 'PCIe 5.0', 'PCIe 6.0', 'PCIe 7.0 (Proj.)'].map(label => wrapLabel(label,16)),
+                datasets: [{
+                    label: 'Bidirectional Bandwidth (GB/s)',
+                    data: [64, 128, 256, 512],
+                    borderColor: CHART_COLORS.primary,
+                    backgroundColor: 'rgba(0, 119, 182, 0.2)', // Primary with alpha
+                    fill: true,
+                    tension: 0.1
+                }]
+            },
+            options: defaultChartOptions
+        });
+
+        // Max Bandwidth Comparison Chart
+        const maxBwCtx = document.getElementById('maxBandwidthComparisonChart').getContext('2d');
+        new Chart(maxBwCtx, {
+            type: 'bar',
+            data: {
+                labels: ['PCIe 7.0 x16', 'NVLink 5.0', 'InfiniBand XDR (4x)', 'RoCEv2 (800GbE)'].map(label => wrapLabel(label,16)),
+                datasets: [{
+                    label: 'Max Bidirectional Bandwidth (GB/s)',
+                    data: [512, 1800, 200, 200], // NVLink is 1.8TB/s = 1800 GB/s
+                    backgroundColor: [CHART_COLORS.primary, CHART_COLORS.secondary, CHART_COLORS.tertiary, CHART_COLORS.accent],
+                    borderColor: CHART_COLORS.text,
+                    borderWidth: 1
+                }]
+            },
+            options: { ...defaultChartOptions, indexAxis: 'y' } // Horizontal bar chart for better label readability
+        });
+
+        // Latency Comparison Chart (using typical lowest reported for simplicity)
+        const latencyCtx = document.getElementById('latencyComparisonChart').getContext('2d');
+        new Chart(latencyCtx, {
+            type: 'bar',
+            data: {
+                labels: [
+                    wrapLabel('PCIe 7.0 (Proj. Comp-Comp)', 16), 
+                    wrapLabel('NVLink 5.0 (Est. GPU-GPU)', 16), 
+                    wrapLabel('InfiniBand XDR (Est. E2E)', 16), 
+                    wrapLabel('RoCEv2 800GbE (E2E)', 16)
+                ],
+                datasets: [{
+                    label: 'Typical Low End-to-End Latency (µs) - Lower is Better',
+                    data: [0.1, 0.05, 0.5, 1.0], // PCIe <100ns=0.1µs, NVLink <50ns=0.05µs, IB <0.5µs, RoCE <1µs (simplified for chart)
+                    backgroundColor: [CHART_COLORS.primary, CHART_COLORS.secondary, CHART_COLORS.tertiary, CHART_COLORS.accent],
+                    borderColor: CHART_COLORS.text,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                ...defaultChartOptions,
+                scales: {
+                    ...defaultChartOptions.scales,
+                    y: {
+                         ...defaultChartOptions.scales.y,
+                        title: {
+                            display: true,
+                            text: 'Latency (microseconds)',
+                            color: CHART_COLORS.text
+                        }
+                    }
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Performance Laws Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script type="text/javascript" async
+        src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+    </script>
+    <script type="text/x-mathjax-config">
+        MathJax.Hub.Config({
+            tex2jax: {
+                inlineMath: [['$','$'], ['\\(','\\)']],
+                displayMath: [['$$','$$'], ['\\[','\\]']],
+                processEscapes: true,
+                skipTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+            },
+            messageStyle: "none"
+        });
+    </script>
+    <!-- Application Structure Plan:
+        - Single-page application with a fixed top navigation bar and a scrollable main content area.
+        - Main content area dynamically updates based on navigation selection using JavaScript to show/hide sections.
+        - Sections:
+            1.  **Home/Introduction:** Overview of performance laws.
+            2.  **Amdahl's Law:**
+                -   Brief Intro to Amdahl's section.
+                -   Definition, Origin, Core Concept.
+                -   Formula (MathJax) & Variable Table.
+                -   Interactive Calculator: Inputs for P (slider/input) and S_optimized/N (number input). Output S_overall.
+                -   Chart: Line chart (Chart.js) showing S_overall vs. N (for current P) to illustrate diminishing returns.
+                -   Key Implications.
+                -   Applications.
+                -   Illustrative Examples (text).
+                -   Limitations.
+            3.  **Little's Law:**
+                -   Brief Intro to Little's section.
+                -   Definition, Origin, Core Concept.
+                -   Formula (MathJax) & Variable Table.
+                -   Interactive Calculator: Inputs for two of L, λ, W. Output the third.
+                -   Key Assumptions & Stability.
+                -   Applications.
+                -   Illustrative Examples (text).
+                -   Limitations.
+            4.  **Comparative Analysis:**
+                -   Brief Intro to Comparison section.
+                -   Key Differences Summarized (table).
+                -   Potential for Complementary Use.
+            5.  **Conclusion:** Summary of the laws' importance.
+        - User Flow: Users select sections from the navigation. Calculators provide immediate feedback. Charts visualize concepts.
+        - Justification: This structure logically segments the detailed information from the source report into manageable and thematic sections. The interactive calculators and charts are central to enhancing understanding beyond static text, directly addressing the goal of an "interactive web application that makes content easily consumable and explorable." Navigation is straightforward, promoting ease of use.
+    -->
+    <!-- Visualization & Content Choices:
+        - **Report Info:** Amdahl's Law formula, concept of diminishing returns, serial fraction impact.
+            - **Goal:** Allow users to interactively explore how overall speedup (S_overall) is affected by changes in the parallelizable fraction (P) and the speedup of the optimized portion (S_optimized, often N processors).
+            - **Viz/Presentation:** HTML form with a slider and number input for P, and a number input for S_optimized/N. Calculated S_overall displayed dynamically. A Chart.js line chart visualizes S_overall (y-axis) against N (x-axis, e.g., 1 to 64 processors) for the selected P.
+            - **Interaction:** User adjusts P via slider/input and N via input. S_overall text and the line chart update in real-time.
+            - **Justification:** This directly visualizes the core tenets of Amdahl's Law: the ceiling imposed by (1-P) and the diminishing returns as N increases. Interactive exploration reinforces learning.
+            - **Library/Method:** Vanilla JS for calculations, Chart.js for the line chart.
+        - **Report Info:** Little's Law formula (L = λW) and its variables.
+            - **Goal:** Enable users to easily calculate any one of the three variables (L, λ, W) when the other two are known, and understand their direct relationship.
+            - **Viz/Presentation:** HTML form with three input fields for L, λ, and W. User fills two; the third is calculated. Dynamic text output.
+            - **Interaction:** User enters values in two of the three fields; the third field is automatically computed and displayed. Clear buttons or instructions guide which fields to fill.
+            - **Justification:** Provides a practical tool for applying Little's Law and understanding the direct algebraic relationship between its components.
+            - **Library/Method:** Vanilla JS for calculations.
+        - **Report Info:** Definitions, explanations, implications, applications, examples, limitations for both laws, and comparative analysis.
+            - **Goal:** Present the rich textual and tabular content from the report in a structured, readable, and accessible manner within the SPA.
+            - **Viz/Presentation:** Content organized into collapsible sections (accordions) or clearly demarcated sub-sections within each main law's page. HTML tables for structured data (e.g., variable definitions, comparison table). MathJax for rendering mathematical formulas.
+            - **Interaction:** Navigation links switch between main content sections.
+            - **Justification:** Ensures comprehensive coverage of the report's information while maintaining usability. MathJax ensures accurate formula display.
+            - **Library/Method:** HTML, Tailwind CSS for styling, Vanilla JS for navigation and UI updates.
+        - CONFIRMATION: NO SVG graphics used. NO Mermaid JS used.
+    -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .mathjax-formula { margin: 1em 0; text-align: center; font-size: 1.2em; overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+        th, td { border: 1px solid #e2e8f0; padding: 0.75rem; text-align: left; }
+        th { background-color: #f1f5f9; }
+        .chart-container { position: relative; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 350px; } }
+        .nav-item { cursor: pointer; }
+        .content-section { display: none; }
+        .content-section.active { display: block; }
+        /* Tailwind's Inter font stack is preferred, but Inter itself is not loaded by default by Tailwind CDN.
+           This ensures a good sans-serif fallback. For production, load Inter via Google Fonts or similar. */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    </style>
+</head>
+<body class="bg-stone-100 text-stone-800 antialiased">
+
+    <nav class="bg-teal-700 text-white p-4 shadow-md sticky top-0 z-50">
+        <div class="container mx-auto flex flex-wrap items-center justify-between">
+            <div class="text-2xl font-bold">Performance Laws Explorer</div>
+            <div class="space-x-2 sm:space-x-4 text-sm sm:text-base">
+                <a onclick="showSection('intro')" class="nav-item hover:text-teal-200 transition-colors">Introduction</a>
+                <a onclick="showSection('amdahl')" class="nav-item hover:text-teal-200 transition-colors">Amdahl's Law</a>
+                <a onclick="showSection('little')" class="nav-item hover:text-teal-200 transition-colors">Little's Law</a>
+                <a onclick="showSection('comparison')" class="nav-item hover:text-teal-200 transition-colors">Comparison</a>
+                <a onclick="showSection('conclusion')" class="nav-item hover:text-teal-200 transition-colors">Conclusion</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4 sm:p-6 md:p-8">
+        <section id="intro" class="content-section active">
+            <h1 class="text-3xl font-bold text-teal-700 mb-6">Welcome to the Performance Laws Explorer</h1>
+            <div class="bg-white p-6 rounded-lg shadow space-y-4">
+                <p class="text-lg">This interactive application provides a comprehensive guide to two fundamental principles in computer science and system performance analysis: Amdahl's Law and Little's Law. Understanding these laws is crucial for designing efficient systems, predicting scalability, and identifying performance bottlenecks.</p>
+                <p>Here, you can:
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li>Learn the definitions, origins, and core concepts of each law.</li>
+                        <li>Explore their mathematical formulas and see how they are applied.</li>
+                        <li>Interact with calculators to understand their implications dynamically.</li>
+                        <li>View visualizations that illustrate key concepts like diminishing returns.</li>
+                        <li>Compare the two laws and understand their distinct applications and insights.</li>
+                    </ul>
+                </p>
+                <p>Navigate through the sections using the links above to delve into each topic. The goal is to make these powerful concepts accessible and engaging. We hope this tool enhances your understanding of system performance!</p>
+            </div>
+        </section>
+
+        <section id="amdahl" class="content-section">
+            <h1 class="text-3xl font-bold text-teal-700 mb-6">Amdahl's Law</h1>
+            <div class="bg-white p-6 rounded-lg shadow space-y-6">
+                <p class="text-lg">Amdahl's Law is a formula used to find the maximum improvement possible by improving a particular part of a system. In parallel computing, it is used to predict the theoretical speedup when using multiple processors. This section will guide you through its definition, formula, implications, and an interactive calculator to see its effects.</p>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">Definition, Origin, and Core Concept</h2>
+                    <p>Amdahl's Law, named after computer architect Gene Amdahl (1967), quantifies the potential speedup of a task when resources are improved, limited by the task's serial fraction. Its core concept: overall performance is constrained by the bottleneck, which in parallel computing is the non-parallelizable serial component. It applies to fixed workloads, predicting speedup for the *same amount of work* with better resources. This highlights the need for holistic optimization, minimizing serial parts for significant gains, and contrasts with Gustafson's Law (scaled workloads).</p>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">The Formula</h2>
+                    <p>The most common mathematical representation of Amdahl's Law is:</p>
+                    <div class="mathjax-formula">$$S_{\text{overall}} = \frac{1}{(1 - P) + \frac{P}{S_{\text{optimized}}}}$$</div>
+                    <p>Where:</p>
+                    <ul class="list-disc list-inside ml-4 mb-4">
+                        <li>$S_{\text{overall}}$: Theoretical speedup of the entire task.</li>
+                        <li>$P$: Proportion of the task's execution time that can benefit from improvement (0 to 1).</li>
+                        <li>$S_{\text{optimized}}$: Speedup factor for the improved portion (e.g., number of processors $N$ if perfectly parallelizable).</li>
+                        <li>$(1 - P)$: Proportion of the task's execution time that is inherently serial.</li>
+                    </ul>
+                    <p>As $S_{\text{optimized}}$ (or $N$) approaches infinity, the maximum speedup $S_{\text{max}} = 1 / (1 - P)$.</p>
+                    
+                    <h3 class="text-xl font-medium text-teal-600 mt-4 mb-2">Variables Summary</h3>
+                    <table>
+                        <thead><tr><th>Symbol(s)</th><th>Description</th><th>Typical Range/Value</th></tr></thead>
+                        <tbody>
+                            <tr><td>$S, S_{\text{overall}}$</td><td>Overall speedup</td><td>$\ge 1$</td></tr>
+                            <tr><td>$P, f, p$</td><td>Proportion parallelizable/improvable</td><td>0 to 1</td></tr>
+                            <tr><td>$S_{\text{optimized}}, N$</td><td>Speedup of improved part / Number of processors</td><td>$> 1$</td></tr>
+                            <tr><td>$(1 - P), s$</td><td>Proportion inherently serial</td><td>0 to 1</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">Interactive Amdahl's Law Calculator & Visualization</h2>
+                    <p>Use the controls below to see how the overall speedup changes based on the parallelizable fraction ($P$) and the speedup of the enhanced portion ($S_{\text{optimized}}$), often represented by the number of processors ($N$). The chart visualizes the speedup curve, illustrating diminishing returns.</p>
+                    <div class="grid md:grid-cols-2 gap-6 items-center">
+                        <div class="space-y-4 p-4 border border-teal-200 rounded-lg bg-teal-50">
+                            <div>
+                                <label for="amdahlP" class="block text-sm font-medium text-stone-700">Fraction Parallelizable ($P$): <span id="amdahlPValue">0.8</span></label>
+                                <input type="range" id="amdahlP" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-teal-600">
+                            </div>
+                            <div>
+                                <label for="amdahlNMax" class="block text-sm font-medium text-stone-700">Max Processors ($N$) for Chart (up to 128):</label>
+                                <input type="number" id="amdahlNMax" min="2" max="128" value="32" class="mt-1 block w-full p-2 border border-stone-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500">
+                            </div>
+                            <div class="mt-2">
+                                <p>Max Speedup ($1/(1-P)$): <strong id="amdahlMaxSpeedup" class="text-teal-700">5.00x</strong></p>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="amdahlChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-8 mb-3">Key Implications</h2>
+                     <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li><strong>Dominance of Serial Fraction:</strong> Even a small serial part severely limits max speedup. E.g., 10% serial ($P=0.9$) means max speedup is 10x.</li>
+                        <li><strong>Diminishing Returns:</strong> Adding more processors yields progressively smaller gains.</li>
+                        <li><strong>Optimization Guidance:</strong> Focus on reducing the serial fraction $(1-P)$ for significant speedups.</li>
+                    </ul>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Applications</h2>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li>Predicting theoretical speedup in parallel processing.</li>
+                        <li>Identifying performance bottlenecks (serial sections).</li>
+                        <li>Informing hardware/software co-design and resource allocation.</li>
+                        <li>Evaluating parallel architectures.</li>
+                        <li>Guiding HPC and cloud computing strategies.</li>
+                        <li>Applicable to any system enhancement where only a portion benefits.</li>
+                    </ul>
+                </div>
+                 <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Illustrative Example: Software Task</h2>
+                    <p>A program takes 100s. 80% is parallelizable ($P=0.8$), 20% serial. With 4 processors ($N=4$):</p>
+                    <p>Original serial time = 20s. Original parallelizable time = 80s.</p>
+                    <p>New parallel time = 80s / 4 = 20s. Serial time remains 20s.</p>
+                    <p>New total time = 20s (serial) + 20s (parallel) = 40s.</p>
+                    <p>Speedup = 100s / 40s = 2.5x. Using formula: $S = 1 / ((1-0.8) + (0.8/4)) = 1 / (0.2 + 0.2) = 2.5\text{x}$.</p>
+                    <p>Max speedup (infinite processors) = $1 / (1-0.8) = 5\text{x}$.</p>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Limitations</h2>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li><strong>Fixed Workload Assumption:</strong> Real-world problems often scale with resources (Gustafson's Law).</li>
+                        <li><strong>Overhead Ignored:</strong> Communication, synchronization, etc., reduce actual speedup.</li>
+                        <li><strong>Processor Homogeneity:</strong> Assumes identical processors.</li>
+                        <li><strong>Fixed Serial Portion:</strong> Algorithmic changes can sometimes reduce seriality.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="little" class="content-section">
+            <h1 class="text-3xl font-bold text-teal-700 mb-6">Little's Law</h1>
+            <div class="bg-white p-6 rounded-lg shadow space-y-6">
+                <p class="text-lg">Little's Law is a fundamental theorem in queuing theory that describes a simple and powerful relationship between the average number of items in a system, the average arrival rate of items, and the average time an item spends in the system. This section covers its definition, formula, an interactive calculator, and its applications.</p>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">Definition, Origin, and Core Concept</h2>
+                    <p>Little's Law, formally proven by John D. C. Little (1961), states that the long-term average number of items ($L$) in a stable queuing system equals the long-term average effective arrival rate ($λ$) multiplied by the average time ($W$) an item spends in the system. Its core concept is its generality: it holds for any stable queuing system, regardless of arrival/service distributions or queue discipline. It applies to long-term averages and can be used hierarchically for systems and subsystems.</p>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">The Formula</h2>
+                    <p>The concise mathematical expression of Little's Law is:</p>
+                    <div class="mathjax-formula">$$L = \lambda \times W$$</div>
+                    <p>Where:</p>
+                    <ul class="list-disc list-inside ml-4 mb-4">
+                        <li>$L$: Average number of items in the system (Work-In-Progress, WIP).</li>
+                        <li>$λ$ (lambda): Average effective arrival rate (Throughput, $X$).</li>
+                        <li>$W$: Average time an item spends in the system (Lead Time, Cycle Time, Response Time).</li>
+                    </ul>
+                     <h3 class="text-xl font-medium text-teal-600 mt-4 mb-2">Variables Summary</h3>
+                    <table>
+                        <thead><tr><th>Symbol(s)</th><th>Common Names</th><th>Description</th><th>Typical Units</th></tr></thead>
+                        <tbody>
+                            <tr><td>$L, N$</td><td>Avg. Items in System, WIP</td><td>Avg. # items concurrently in system</td><td>Items, tasks</td></tr>
+                            <tr><td>$λ, X$</td><td>Avg. Arrival Rate, Throughput</td><td>Avg. rate items enter/exit system</td><td>Items/sec, tasks/hr</td></tr>
+                            <tr><td>$W, Rt$</td><td>Avg. Time in System, Lead Time</td><td>Avg. total time item spends in system</td><td>Seconds, hours</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">Interactive Little's Law Calculator</h2>
+                    <p>Enter any two values to calculate the third. Ensure consistent time units for Arrival Rate and Time in System. This calculator helps you understand the direct relationship between these three key performance metrics.</p>
+                    <div class="grid md:grid-cols-3 gap-4 p-4 border border-teal-200 rounded-lg bg-teal-50">
+                        <div>
+                            <label for="littleL" class="block text-sm font-medium text-stone-700">Avg. Items in System ($L$):</label>
+                            <input type="number" id="littleL" placeholder="e.g., 10" class="mt-1 block w-full p-2 border border-stone-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500">
+                        </div>
+                        <div>
+                            <label for="littleLambda" class="block text-sm font-medium text-stone-700">Avg. Arrival Rate ($λ$):</label>
+                            <input type="number" id="littleLambda" placeholder="e.g., 2 (items/hr)" class="mt-1 block w-full p-2 border border-stone-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500">
+                        </div>
+                        <div>
+                            <label for="littleW" class="block text-sm font-medium text-stone-700">Avg. Time in System ($W$):</label>
+                            <input type="number" id="littleW" placeholder="e.g., 5 (hr)" class="mt-1 block w-full p-2 border border-stone-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500">
+                        </div>
+                        <div class="md:col-span-3 text-center mt-2">
+                             <button onclick="calculateLittle()" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors">Calculate Missing Value</button>
+                             <button onclick="resetLittle()" class="ml-2 bg-stone-500 hover:bg-stone-600 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors">Reset</button>
+                        </div>
+                        <div class="md:col-span-3 mt-2">
+                            <p id="littleResult" class="text-center font-semibold text-teal-700"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-8 mb-3">Key Assumptions and System Stability</h2>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li><strong>Steady-State Condition:</strong> System averages are stable over time; arrival rate ≈ departure rate.</li>
+                        <li><strong>Conservation of Flow:</strong> Items entering must eventually depart.</li>
+                        <li><strong>Consistent Units:</strong> $L, λ, W$ must use consistent time units.</li>
+                        <li><strong>Finite Averages:</strong> $L, λ, W$ must be finite.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Applications</h2>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li>Queuing theory (retail, manufacturing, healthcare, telecom).</li>
+                        <li>Software performance engineering (capacity planning, test validation).</li>
+                        <li>Operations management (WIP control, lead time prediction, Lean/Kanban).</li>
+                        <li>Project management (Agile/Kanban workflow).</li>
+                    </ul>
+                </div>
+                 <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Illustrative Example: Coffee Shop</h2>
+                    <p>Customers arrive at $λ = 20$ customers/hour. They spend $W = 0.25$ hours (15 mins) on average.</p>
+                    <p>Average customers in shop $L = λ \times W = 20 \times 0.25 = 5$ customers.</p>
+                    <p>To reduce time to $W = 0.1$ hours (6 mins) with same $λ$, average customers $L$ must be $20 \times 0.1 = 2$. This needs faster service or more staff.</p>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Limitations</h2>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li><strong>Steady-State Assumption:</strong> Less accurate for highly transient systems.</li>
+                        <li><strong>Averages Mask Variability:</strong> Doesn't show distribution (e.g., 95th percentile wait time).</li>
+                        <li><strong>Black Box View:</strong> Describes system state, not *why* $W$ is what it is (needs internal analysis).</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="comparison" class="content-section">
+            <h1 class="text-3xl font-bold text-teal-700 mb-6">Comparative Analysis: Amdahl's vs. Little's Law</h1>
+            <div class="bg-white p-6 rounded-lg shadow space-y-6">
+                <p class="text-lg">While both Amdahl's Law and Little's Law are fundamental to performance analysis, they address different aspects and apply to different scenarios. This section provides a direct comparison to clarify their distinct roles and potential complementary uses.</p>
+                
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mb-3">Key Differences Summarized</h2>
+                    <div class="overflow-x-auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Feature</th>
+                                    <th>Amdahl's Law</th>
+                                    <th>Little's Law</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Primary Goal</strong></td>
+                                    <td>Predict theoretical speedup from partial enhancement.</td>
+                                    <td>Describe relationship: $L = λ \times W$ in stable queues.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Focus</strong></td>
+                                    <td>Performance gain on a <em>fixed workload</em>; serial fraction limits.</td>
+                                    <td>Throughput, WIP, latency for <em>ongoing flow</em>.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>System Type</strong></td>
+                                    <td>Tasks with serial & parallelizable/improvable parts.</td>
+                                    <td>Any stable queuing system.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Core Formula</strong></td>
+                                    <td>$ S = 1 / ((1-P) + P/S_{\text{optimized}}) $</td>
+                                    <td>$ L = \lambda \times W $</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Key Assumption</strong></td>
+                                    <td>Fixed workload.</td>
+                                    <td>System in steady-state.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Primary Insight</strong></td>
+                                    <td>Serial part is bottleneck; diminishing returns.</td>
+                                    <td>Interdependence of WIP, throughput, lead time.</td>
+                                </tr>
+                                 <tr>
+                                    <td><strong>Typical Use</strong></td>
+                                    <td>Parallel algorithm design, hardware upgrade impact.</td>
+                                    <td>Capacity planning, workflow analysis, queue management.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="text-2xl font-semibold text-teal-600 mt-6 mb-3">Potential for Complementary Use</h2>
+                    <p>Amdahl's and Little's Laws can be used together. For example, Amdahl's Law might identify a serial bottleneck in a parallel system. Little's Law could then analyze the queue forming at this serial component, quantifying its impact on overall latency. Amdahl's Law can guide optimization of a component (micro-level), reducing its service time. This improved service time then becomes a parameter in a Little's Law analysis of the larger system (macro-level), potentially showing increased overall throughput or reduced system-wide time.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="content-section">
+            <h1 class="text-3xl font-bold text-teal-700 mb-6">Conclusion: The Enduring Value of Performance Laws</h1>
+            <div class="bg-white p-6 rounded-lg shadow space-y-4">
+                <p class="text-lg">Amdahl's Law and Little's Law are indispensable tools in performance analysis. Amdahl's Law clarifies the limits of speedup from parallelization or component enhancement for fixed workloads, highlighting the critical impact of serial fractions. Little's Law offers a universal principle ($L = λW$) for stable queuing systems, relating throughput, work-in-progress, and cycle time across diverse domains.</p>
+                <p>Despite their simplicity, both laws provide profound insights for system designers, architects, and analysts, fostering a quantitative approach to performance. Their continued relevance underscores their role in building fundamental intuition about system behavior—bottlenecks, flow, equilibrium, and improvement limits. However, their power lies in critical application: understanding their assumptions and limitations is vital for deriving meaningful conclusions. A solid grasp of these principles is essential for realistic performance evaluation, effective optimization, and designing robust, efficient systems.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="text-center p-6 mt-10 text-sm text-stone-600">
+        Interactive Performance Laws Explorer | Content based on provided research document.
+    </footer>
+
+    <script>
+        const sections = document.querySelectorAll('.content-section');
+        const navLinks = document.querySelectorAll('.nav-item');
+        let amdahlChartInstance = null;
+
+        function showSection(sectionId) {
+            sections.forEach(section => {
+                if (section.id === sectionId) {
+                    section.classList.add('active');
+                } else {
+                    section.classList.remove('active');
+                }
+            });
+            // Update MathJax rendering for the newly shown section
+            if (typeof MathJax !== "undefined" && MathJax.Hub) {
+                MathJax.Hub.Queue(["Typeset", MathJax.Hub, document.getElementById(sectionId)]);
+            }
+            // Initialize Amdahl chart if Amdahl section is shown
+            if (sectionId === 'amdahl') {
+                initAmdahlChart();
+                updateAmdahlChart();
+            }
+        }
+
+        // Amdahl's Law Calculator
+        const amdahlPSlider = document.getElementById('amdahlP');
+        const amdahlPValueDisplay = document.getElementById('amdahlPValue');
+        const amdahlNMaxInput = document.getElementById('amdahlNMax');
+        const amdahlMaxSpeedupDisplay = document.getElementById('amdahlMaxSpeedup');
+
+        function calculateAmdahlSpeedup(p, s_optimized) {
+            if (s_optimized === 0) return 1; // Avoid division by zero, though s_optimized should be > 1
+            if (p === 1 && s_optimized === 0) return Infinity; // Theoretical perfect parallelization
+            return 1 / ((1 - p) + (p / s_optimized));
+        }
+        
+        function updateAmdahlDisplays() {
+            const p = parseFloat(amdahlPSlider.value);
+            amdahlPValueDisplay.textContent = p.toFixed(2);
+            const maxTheoreticalSpeedup = (p === 1) ? 'Infinity (theoretical)' : (1 / (1 - p)).toFixed(2) + 'x';
+            amdahlMaxSpeedupDisplay.innerHTML = maxTheoreticalSpeedup;
+            updateAmdahlChart();
+        }
+
+        function initAmdahlChart() {
+            if (amdahlChartInstance) {
+                amdahlChartInstance.destroy();
+            }
+            const ctx = document.getElementById('amdahlChart').getContext('2d');
+            amdahlChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Overall Speedup (S_overall)',
+                        data: [],
+                        borderColor: 'rgb(13, 148, 136)', // teal-600
+                        backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Number of Processors (N or S_optimized)' }
+                        },
+                        y: {
+                            title: { display: true, text: 'Overall Speedup (S_overall)' },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toFixed(2) + 'x';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateAmdahlChart() {
+            if (!amdahlChartInstance) return;
+
+            const p = parseFloat(amdahlPSlider.value);
+            const nMax = parseInt(amdahlNMaxInput.value) || 32;
+            const labels = [];
+            const speedupData = [];
+
+            for (let n = 1; n <= nMax; n++) {
+                labels.push(n);
+                speedupData.push(calculateAmdahlSpeedup(p, n));
+            }
+            
+            amdahlChartInstance.data.labels = labels;
+            amdahlChartInstance.data.datasets[0].data = speedupData;
+            amdahlChartInstance.update();
+        }
+
+        if (amdahlPSlider) {
+            amdahlPSlider.addEventListener('input', updateAmdahlDisplays);
+            amdahlNMaxInput.addEventListener('input', updateAmdahlDisplays);
+        }
+       
+
+        // Little's Law Calculator
+        const littleLInput = document.getElementById('littleL');
+        const littleLambdaInput = document.getElementById('littleLambda');
+        const littleWInput = document.getElementById('littleW');
+        const littleResultDisplay = document.getElementById('littleResult');
+
+        function calculateLittle() {
+            const L = parseFloat(littleLInput.value);
+            const lambda = parseFloat(littleLambdaInput.value);
+            const W = parseFloat(littleWInput.value);
+            let resultText = "";
+
+            let filledCount = 0;
+            if (!isNaN(L)) filledCount++;
+            if (!isNaN(lambda)) filledCount++;
+            if (!isNaN(W)) filledCount++;
+
+            if (filledCount !== 2) {
+                resultText = "Please enter exactly two values.";
+            } else {
+                if (isNaN(L)) {
+                    if (lambda <= 0 || W < 0) {
+                         resultText = "Lambda must be > 0 and W must be >= 0.";
+                    } else {
+                        const calculatedL = lambda * W;
+                        littleLInput.value = calculatedL.toFixed(3);
+                        resultText = `Calculated L = ${lambda.toFixed(3)} * ${W.toFixed(3)} = ${calculatedL.toFixed(3)}`;
+                    }
+                } else if (isNaN(lambda)) {
+                     if (L < 0 || W <= 0) {
+                         resultText = "L must be >= 0 and W must be > 0 for a meaningful Lambda.";
+                    } else {
+                        const calculatedLambda = L / W;
+                        littleLambdaInput.value = calculatedLambda.toFixed(3);
+                        resultText = `Calculated λ = ${L.toFixed(3)} / ${W.toFixed(3)} = ${calculatedLambda.toFixed(3)}`;
+                    }
+                } else if (isNaN(W)) {
+                     if (L < 0 || lambda <= 0) {
+                         resultText = "L must be >= 0 and Lambda must be > 0 for a meaningful W.";
+                    } else {
+                        const calculatedW = L / lambda;
+                        littleWInput.value = calculatedW.toFixed(3);
+                        resultText = `Calculated W = ${L.toFixed(3)} / ${lambda.toFixed(3)} = ${calculatedW.toFixed(3)}`;
+                    }
+                }
+            }
+            littleResultDisplay.textContent = resultText;
+        }
+
+        function resetLittle() {
+            littleLInput.value = "";
+            littleLambdaInput.value = "";
+            littleWInput.value = "";
+            littleResultDisplay.textContent = "";
+        }
+        
+        // Initial setup
+        document.addEventListener('DOMContentLoaded', () => {
+            showSection('intro'); // Show intro section by default
+            if (document.getElementById('amdahl')) { // Initialize Amdahl displays if section exists
+                 updateAmdahlDisplays();
+            }
+        });
+
+    </script>
+</body>
+</html>

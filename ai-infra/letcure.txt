@@ -1,0 +1,15 @@
+
+
+Observe FP32 and Tensor 
+Plaigemma run 
+
+https://grafana.robot.car/d/cs-job-resource-usage-wip/compute-substrate-job-resource-usage?from=2025-05-13T17:12:16.024Z&var-job_id=cs-250513-n48mdu5kt6&var-k8s_cluster_name=paas-mlc-dp-3-prod-us-central1&var-k8s_gcp_project=cruise-paas-kubeflow-prod-1d23&var-k8s_namespace_name=roboflow-gke&to=2025-05-13T19:19:03.699Z&timezone=browser&orgId=1&var-k8s_pod_name=$__all&var-kube_namespace=$__all&var-cloud_account_id=cruise-paas-kubeflow-prod-1d23
+
+
+Archtcture diagram 
+file:///Users/dmitry.volkov/GitHub/systemdesign.github.io/ai-infra/h100_sm_architecture.md
+
+
+
+Random job run 
+https://grafana.robot.car/d/cs-job-resource-usage-wip/compute-substrate-job-resource-usage?from=2025-06-03T23:18:43.000Z&var-job_id=cs-250603-a3md7lh524&var-k8s_cluster_name=paas-mlc-dp-3-prod-us-central1&var-k8s_gcp_project=cruise-paas-kubeflow-prod-1d23&var-k8s_namespace_name=roboflow-gke&to=now&timezone=browser&orgId=1&var-k8s_pod_name=$__all&var-kube_namespace=$__all&var-cloud_account_id=cruise-paas-kubeflow-prod-1d23

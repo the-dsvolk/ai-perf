@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Guide to Cache Efficiency in C</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        .chart-container { position: relative; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; height: 350px; max-height: 450px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .nav-link { transition: color 0.2s, border-color 0.2s; }
+        .nav-link.active, .nav-link:hover { color: #f59e0b; border-color: #f59e0b; }
+        .tab.active { background-color: #f59e0b; color: #1e293b; }
+        .tab:not(.active) { background-color: #334155; color: #f1f5f9; }
+        .btn-primary { background-color: #f59e0b; color: #1e293b; transition: background-color 0.2s; }
+        .btn-primary:hover { background-color: #fbbf24; }
+        .btn-primary:disabled { background-color: #94a3b8; cursor: not-allowed; }
+        .card-expandable { transition: max-height 0.5s ease-in-out, padding 0.5s ease-in-out; }
+        .matrix-cell {
+            width: 100%; 
+            aspect-ratio: 1 / 1;
+            background-color: #e2e8f0; /* slate-200 */
+            border: 1px solid #cbd5e1; /* slate-300 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem; /* Smaller text for indices */
+            color: #475569; /* slate-600 */
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+        }
+        .matrix-cell.highlight-a { background-color: #f87171 !important; /* red-400 */ color: white !important; }
+        .matrix-cell.highlight-b { background-color: #60a5fa !important; /* blue-400 */ color: white !important; }
+        .matrix-cell.highlight-c { background-color: #34d399 !important; /* emerald-400 */ color: white !important; }
+        .matrix-cell.highlight-fixedA { border: 2px solid #ef4444 !important; /* red-500 */ }
+        .matrix-cell.highlight-fixedC { border: 2px solid #10b981 !important; /* emerald-500 */ }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <header class="bg-slate-800 text-white shadow-lg sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-amber-400">Cache Efficiency in C</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#fundamentals" class="nav-link px-3 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Fundamentals</a>
+                        <a href="#techniques" class="nav-link px-3 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Techniques</a>
+                        <a href="#matrix-mult" class="nav-link px-3 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Case Study</a>
+                        <a href="#pitfalls" class="nav-link px-3 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Pitfalls</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <section id="intro" class="text-center py-12">
+            <h2 class="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">Unlock Peak Performance</h2>
+            <p class="mt-6 text-lg leading-8 text-slate-600 max-w-3xl mx-auto">Modern CPUs are incredibly fast, but they are often starved for data from slow main memory. This guide provides an interactive exploration of how to write cache-efficient C code, bridging the "Memory Wall" to make your programs run dramatically faster.</p>
+        </section>
+
+        <div class="space-y-24">
+            <section id="fundamentals" class="scroll-mt-20">
+                <div class="text-center">
+                    <h3 class="text-3xl font-bold text-slate-900">The Memory Hierarchy</h3>
+                    <p class="mt-4 text-md text-slate-600 max-w-2xl mx-auto">Data is stored in levels, each faster but smaller than the last. The goal is to keep frequently used data as close to the CPU as possible. Hover over each level to see its typical characteristics.</p>
+                </div>
+                <div id="cache-hierarchy" class="mt-8 flex flex-col items-center space-y-2">
+                    <div data-info="CPU Core: Where instructions are executed. Access is near-instant." class="cache-level w-32 h-16 bg-amber-500 text-white flex items-center justify-center rounded-lg shadow-md font-bold text-center transition-transform duration-200 hover:scale-110 cursor-pointer">CPU Core</div>
+                    <div class="h-8 w-1 border-l-4 border-slate-400 border-dashed"></div>
+                    <div data-info="L1 Cache (32-128 KB): Extremely fast (1-2 cycles). The first place the CPU looks for data." class="cache-level w-48 h-20 bg-slate-700 text-white flex items-center justify-center rounded-lg shadow-md font-semibold text-center transition-transform duration-200 hover:scale-110 cursor-pointer">L1 Cache</div>
+                    <div class="h-8 w-1 border-l-4 border-slate-400 border-dashed"></div>
+                    <div data-info="L2 Cache (256KB-8MB): Fast (10-20 cycles). Larger than L1." class="cache-level w-64 h-24 bg-slate-600 text-white flex items-center justify-center rounded-lg shadow-md font-semibold text-center transition-transform duration-200 hover:scale-110 cursor-pointer">L2 Cache</div>
+                    <div class="h-8 w-1 border-l-4 border-slate-400 border-dashed"></div>
+                    <div data-info="L3 Cache (8-30MB+): Slower (40-60 cycles), but much larger and shared by multiple cores." class="cache-level w-80 h-28 bg-slate-500 text-white flex items-center justify-center rounded-lg shadow-md font-semibold text-center transition-transform duration-200 hover:scale-110 cursor-pointer">L3 Cache</div>
+                    <div class="h-8 w-1 border-l-4 border-slate-400 border-dashed"></div>
+                    <div data-info="Main Memory / RAM (GBs): Very slow (>100 cycles). The ultimate source of data." class="cache-level w-96 h-32 bg-slate-400 text-white flex items-center justify-center rounded-lg shadow-md font-semibold text-center transition-transform duration-200 hover:scale-110 cursor-pointer">Main Memory (DRAM)</div>
+                </div>
+                <div id="hierarchy-info" class="mt-6 p-4 bg-slate-100 rounded-lg text-center text-slate-700 font-medium h-16 flex items-center justify-center transition-opacity duration-300 opacity-0">
+                    Hover over a level for information.
+                </div>
+            </section>
+
+            <section id="techniques" class="scroll-mt-20">
+                <div class="text-center">
+                    <h3 class="text-3xl font-bold text-slate-900">Core Optimization Techniques</h3>
+                    <p class="mt-4 text-md text-slate-600 max-w-2xl mx-auto">You can actively guide the compiler and CPU by structuring your data and code thoughtfully. The following techniques demonstrate how to organize data and access it efficiently.</p>
+                </div>
+                <div class="mt-8">
+                    <div class="flex justify-center border-b border-slate-300">
+                        <button class="tab active px-6 py-2 font-semibold rounded-t-lg" data-tab="layout">Data Layout</button>
+                        <button class="tab px-6 py-2 font-semibold rounded-t-lg" data-tab="access">Access Patterns</button>
+                    </div>
+
+                    <div id="layout-content" class="tab-content p-6 bg-slate-200 rounded-b-lg">
+                        <h4 class="text-xl font-bold text-center mb-4">Array of Structs (AoS) vs. Struct of Arrays (SoA)</h4>
+                        <p class="text-center text-slate-600 mb-6">The way you group your data has a huge impact on cache performance. Choose a layout that matches how you access the data. Below, we want to process only the `x` coordinates of 3D points.</p>
+                        <div class="grid md:grid-cols-2 gap-8 items-start">
+                            <div class="aos-container">
+                                <h5 class="font-semibold text-lg text-center mb-2">Array of Structs (AoS)</h5>
+                                <p class="text-sm text-center text-slate-500 mb-4">Good for accessing all fields of one object at a time (`p.x, p.y, p.z`).</p>
+                                <div id="aos-viz" class="p-4 bg-white rounded-lg shadow"></div>
+                                <div class="text-center mt-4">
+                                    <button id="run-aos" class="btn-primary px-4 py-2 rounded-md font-semibold">Run Access Simulation</button>
+                                </div>
+                            </div>
+                            <div class="soa-container">
+                                <h5 class="font-semibold text-lg text-center mb-2">Struct of Arrays (SoA)</h5>
+                                <p class="text-sm text-center text-slate-500 mb-4">Ideal for processing one field across all objects (all `x`'s).</p>
+                                <div id="soa-viz" class="p-4 bg-white rounded-lg shadow"></div>
+                                <div class="text-center mt-4">
+                                    <button id="run-soa" class="btn-primary px-4 py-2 rounded-md font-semibold">Run Access Simulation</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="aos-soa-explanation" class="mt-6 p-4 bg-white rounded-lg text-center text-slate-700 font-medium">
+                            Click a simulation button to see the result.
+                        </div>
+                    </div>
+
+                    <div id="access-content" class="hidden tab-content p-6 bg-slate-200 rounded-b-lg">
+                        <h4 class="text-xl font-bold text-center mb-4">Loop Ordering</h4>
+                        <p class="text-center text-slate-600 mb-6">In C's row-major memory layout, accessing elements in the same row is fast (stride-1 access), while jumping between rows is slow. Watch how changing the loop order affects the memory access pattern on a 2D matrix.</p>
+                        <div class="grid md:grid-cols-2 gap-8 items-start">
+                            <div class="good-loop-container">
+                                <h5 class="font-semibold text-lg text-center mb-2">Cache-Friendly (Row-wise)</h5>
+                                <p class="text-sm text-center text-slate-500 mb-2"><code>for (row)... for (col)...</code></p>
+                                <div id="good-loop-viz" class="grid grid-cols-8 gap-1 p-2 bg-white rounded shadow"></div>
+                                <div class="text-center mt-4">
+                                    <button id="run-good-loop" class="btn-primary px-4 py-2 rounded-md font-semibold">Run Simulation</button>
+                                </div>
+                            </div>
+                             <div class="bad-loop-container">
+                                <h5 class="font-semibold text-lg text-center mb-2">Cache-Unfriendly (Column-wise)</h5>
+                                <p class="text-sm text-center text-slate-500 mb-2"><code>for (col)... for (row)...</code></p>
+                                <div id="bad-loop-viz" class="grid grid-cols-8 gap-1 p-2 bg-white rounded shadow"></div>
+                                <div class="text-center mt-4">
+                                    <button id="run-bad-loop" class="btn-primary px-4 py-2 rounded-md font-semibold">Run Simulation</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="matrix-mult" class="scroll-mt-20">
+                <div class="text-center">
+                    <h3 class="text-3xl font-bold text-slate-900">Case Study: Matrix Multiplication</h3>
+                    <p class="mt-4 text-md text-slate-600 max-w-2xl mx-auto">Matrix multiplication is a classic problem where cache optimization yields massive performance gains. The chart below shows the relative performance of different algorithms. Select an algorithm from the dropdown to see an explanation and a visualization of its inner loop access pattern (for Naive/Ordered).</p>
+                </div>
+                <div class="mt-8 p-6 bg-slate-200 rounded-lg">
+                    <div class="chart-container mb-6">
+                        <canvas id="matrix-chart"></canvas>
+                    </div>
+                    <div class="flex justify-center mb-2">
+                        <label for="matrix-algo-select" class="mr-2 self-center font-medium text-slate-700">Algorithm Details:</label>
+                        <select id="matrix-algo-select" class="p-2 rounded-md border-2 border-slate-400 bg-white focus:border-amber-500 focus:ring-amber-500">
+                            <option value="naive">Naive (ijk)</option>
+                            <option value="ordered">Loop Ordered (ikj)</option>
+                            <option value="tiled">Cache Tiled/Blocked</option>
+                            <option value="strassen">Strassen's Algorithm</option>
+                        </select>
+                    </div>
+                    <div id="matrix-explanation" class="mt-4 p-4 bg-white rounded-lg text-slate-700 font-medium min-h-[100px]">
+                        Select an algorithm to see details.
+                    </div>
+                </div>
+            </section>
+
+            <section id="pitfalls" class="scroll-mt-20">
+                <div class="text-center">
+                    <h3 class="text-3xl font-bold text-slate-900">Common Pitfalls</h3>
+                    <p class="mt-4 text-md text-slate-600 max-w-2xl mx-auto">Even with good intentions, it's easy to fall into performance traps. These are subtle issues that arise from how hardware works. Click to expand each topic.</p>
+                </div>
+                <div class="mt-8 max-w-3xl mx-auto space-y-4">
+                    <div class="pitfall-card border border-slate-300 rounded-lg overflow-hidden">
+                        <button class="pitfall-header w-full p-4 text-left bg-slate-200 hover:bg-slate-300 flex justify-between items-center">
+                            <h4 class="text-xl font-semibold">False Sharing</h4>
+                            <span class="text-2xl font-bold transform transition-transform duration-300">-</span>
+                        </button>
+                        <div class="pitfall-content card-expandable max-h-0 p-0 bg-white">
+                            <div class="p-6">
+                                <p class="mb-4">This occurs in multi-threaded code. If two threads modify independent variables that happen to be on the same cache line, the hardware's cache coherency protocol causes constant, expensive invalidations, creating a "phantom" bottleneck.</p>
+                                <p class="font-semibold">Solution: Use padding to push variables used by different threads onto separate cache lines.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pitfall-card border border-slate-300 rounded-lg overflow-hidden">
+                        <button class="pitfall-header w-full p-4 text-left bg-slate-200 hover:bg-slate-300 flex justify-between items-center">
+                            <h4 class="text-xl font-semibold">Cache Thrashing</h4>
+                            <span class="text-2xl font-bold transform transition-transform duration-300">-</span>
+                        </button>
+                        <div class="pitfall-content card-expandable max-h-0 p-0 bg-white">
+                             <div class="p-6">
+                                <p class="mb-4">This happens when your access pattern causes different memory locations to map to the same cache set (a specific part of the cache). They repeatedly kick each other out, leading to constant cache misses even if the data should fit in the cache.</p>
+                                <p class="font-semibold">Solution: Change data layout, add padding to alter memory addresses, or reorder data access to break the conflicting pattern.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    const matrixChartData = {
+        naive: {
+            perf: 1,
+            text: "<p><strong>Naive (ijk):</strong> This is the baseline. It suffers from poor spatial locality when accessing Matrix B. For each element of A, it must traverse a full column of B, leading to many cache misses as it jumps across memory.</p>"
+        },
+        ordered: {
+            perf: 5,
+            text: "<p><strong>Loop Ordered (ikj):</strong> A simple but effective change. This order keeps an element of A (`A[i][k]`) constant in the inner loop while accessing both B and C row-wise. This creates contiguous memory access (stride-1) for B and C, dramatically improving spatial locality.</p>"
+        },
+        tiled: {
+            perf: 20,
+            text: "<p><strong>Cache Tiled/Blocked:</strong> The gold standard for this problem. The matrices are broken into small blocks that fit entirely in the cache. By processing one block at a time, we maximize data reuse (temporal locality). The same data is used many times before being evicted, minimizing traffic to main memory.</p>"
+        },
+        strassen: {
+            perf: 18,
+            text: "<p><strong>Strassen's Algorithm:</strong> A theoretical beast. It reduces the number of multiplications needed, giving it a better asymptotic complexity (O(N^2.807)). It's 'cache-oblivious,' meaning its recursive nature naturally creates sub-problems that fit in cache. However, for moderately sized matrices, the overhead can make it slower than a well-tuned tiled implementation.</p>"
+        }
+    };
+
+    const algoDisplayNames = {
+        naive: 'Naive (ijk)',
+        ordered: 'Loop Ordered (ikj)',
+        tiled: 'Cache Tiled/Blocked',
+        strassen: "Strassen's Algorithm"
+    };
+    const algoKeys = Object.keys(matrixChartData);
+
+    let matrixChart;
+    const ctx = document.getElementById('matrix-chart').getContext('2d');
+    
+    function initializeMatrixChart() {
+        matrixChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: algoKeys.map(key => algoDisplayNames[key]),
+                datasets: [{
+                    label: 'Performance Multiplier (vs Naive)',
+                    data: algoKeys.map(key => matrixChartData[key].perf),
+                    backgroundColor: [
+                        'rgba(239, 68, 68, 0.7)',  // Red-500
+                        'rgba(59, 130, 246, 0.7)', // Blue-500
+                        'rgba(245, 158, 11, 0.7)', // Amber-500 (original theme)
+                        'rgba(16, 185, 129, 0.7)'  // Emerald-500
+                    ],
+                    borderColor: [
+                        'rgba(239, 68, 68, 1)',
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(245, 158, 11, 1)',
+                        'rgba(16, 185, 129, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'x',
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Performance Multiplier (Higher is Better)',
+                            font: { size: 14, weight: '500' },
+                            color: '#334155'
+                        },
+                        grid: { color: '#e2e8f0' },
+                        ticks: { color: '#475569' }
+                    },
+                    x: {
+                       title: {
+                            display: true,
+                            text: 'Algorithm',
+                            font: { size: 14, weight: '500' },
+                            color: '#334155'
+                        },
+                        grid: { display: false },
+                        ticks: {
+                            color: '#475569',
+                            font: function(context) {
+                                if (context.tick && context.tick.label.length > 15 && window.innerWidth < 768) { return { size: 9 }; }
+                                return { size: 11 };
+                            },
+                            callback: function(value, index, ticks) {
+                                const label = this.getLabelForValue(value);
+                                if (label.length > 16 && window.innerWidth < 768) {
+                                    const words = label.split(' ');
+                                    if (words.length > 1) return words.map(w => w.substring(0,5)+'.');
+                                    return label.substring(0,10)+'...'
+                                }
+                                return label;
+                            },
+                            maxRotation: 0, minRotation: 0 
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b', titleColor: '#f1f5f9', bodyColor: '#f1f5f9',
+                        callbacks: {
+                           label: function(context) { return `${context.dataset.label}: ~${context.raw}x faster than Naive`; }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    let currentMatrixVizIntervalId = null;
+    function createMatrixCells(matrixDivId, N, prefix) {
+        const matrixDiv = document.getElementById(matrixDivId);
+        if (!matrixDiv) return;
+        matrixDiv.innerHTML = ''; 
+        for (let r = 0; r < N; r++) {
+            for (let c = 0; c < N; c++) {
+                const cell = document.createElement('div');
+                cell.id = `${prefix}-${r}-${c}`;
+                cell.className = 'matrix-cell';
+                matrixDiv.appendChild(cell);
+            }
+        }
+    }
+
+    function setupMatrixVisualization(algo) {
+        const N_VIZ = 3; // Size for visualization
+        const vizIdPrefix = `viz-${algo}`;
+        const container = document.getElementById(`${vizIdPrefix}-container`);
+        if (!container) return;
+
+        const matrixADivId = `${vizIdPrefix}-A`;
+        const matrixBDivId = `${vizIdPrefix}-B`;
+        const matrixCDivId = `${vizIdPrefix}-C`;
+
+        createMatrixCells(matrixADivId, N_VIZ, `${vizIdPrefix}-A`);
+        createMatrixCells(matrixBDivId, N_VIZ, `${vizIdPrefix}-B`);
+        createMatrixCells(matrixCDivId, N_VIZ, `${vizIdPrefix}-C`);
+
+        const runButton = document.getElementById(`run-${vizIdPrefix}`);
+        const statusP = document.getElementById(`${vizIdPrefix}-status`);
+        
+        let currentStep = 0;
+
+        runButton.onclick = () => {
+            if (currentMatrixVizIntervalId) {
+                clearInterval(currentMatrixVizIntervalId);
+            }
+            currentStep = 0;
+            runButton.disabled = true;
+            runButton.textContent = "Running...";
+
+            document.querySelectorAll(`#${vizIdPrefix}-container .matrix-cell`).forEach(cell => {
+                cell.classList.remove('highlight-a', 'highlight-b', 'highlight-c', 'highlight-fixedA', 'highlight-fixedC');
+            });
+
+            const fixed_i_viz = 0; 
+            const fixed_j_for_naive_viz = 0;
+            const fixed_k_for_ordered_viz = 0;
+
+            if (algo === 'naive' && document.getElementById(`${vizIdPrefix}-C-${fixed_i_viz}-${fixed_j_for_naive_viz}`)) {
+                 document.getElementById(`${vizIdPrefix}-C-${fixed_i_viz}-${fixed_j_for_naive_viz}`).classList.add('highlight-fixedC');
+            } else if (algo === 'ordered' && document.getElementById(`${vizIdPrefix}-A-${fixed_i_viz}-${fixed_k_for_ordered_viz}`)) {
+                 document.getElementById(`${vizIdPrefix}-A-${fixed_i_viz}-${fixed_k_for_ordered_viz}`).classList.add('highlight-fixedA');
+            }
+
+
+            currentMatrixVizIntervalId = setInterval(() => {
+                document.querySelectorAll(`#${vizIdPrefix}-container .matrix-cell:not(.highlight-fixedA):not(.highlight-fixedC)`).forEach(cell => {
+                     cell.classList.remove('highlight-a', 'highlight-b', 'highlight-c');
+                });
+                
+                if (currentStep >= N_VIZ) {
+                    clearInterval(currentMatrixVizIntervalId);
+                    currentMatrixVizIntervalId = null;
+                    runButton.disabled = false;
+                    runButton.textContent = `Run Inner Loop (over ${algo === 'naive' ? 'k' : 'j'}) Again`;
+                    statusP.textContent = `Done. (i=${fixed_i_viz}, ${algo === 'naive' ? `j=${fixed_j_for_naive_viz}` : `k=${fixed_k_for_ordered_viz}`})`;
+                    return;
+                }
+
+                let rA, cA, rB, cB, rC, cC;
+
+                if (algo === 'naive') { 
+                    const current_k_viz = currentStep;
+                    rA = fixed_i_viz; cA = current_k_viz;
+                    rB = current_k_viz; cB = fixed_j_for_naive_viz;
+                    rC = fixed_i_viz; cC = fixed_j_for_naive_viz;
+                    statusP.textContent = `Accessing for C[${fixed_i_viz}][${fixed_j_for_naive_viz}]: A[${rA}][${cA}] * B[${rB}][${cB}] (k=${current_k_viz})`;
+                } else { 
+                    const current_j_viz = currentStep;
+                    rA = fixed_i_viz; cA = fixed_k_for_ordered_viz;
+                    rB = fixed_k_for_ordered_viz; cB = current_j_viz;
+                    rC = fixed_i_viz; cC = current_j_viz;
+                    statusP.textContent = `Accessing for C[${fixed_i_viz}][${cC}]: A[${rA}][${cA}] * B[${rB}][${cB}] (j=${current_j_viz})`;
+                }
+                
+                const cellA = document.getElementById(`${vizIdPrefix}-A-${rA}-${cA}`);
+                const cellB = document.getElementById(`${vizIdPrefix}-B-${rB}-${cB}`);
+                const cellC = document.getElementById(`${vizIdPrefix}-C-${rC}-${cC}`);
+
+                if(cellA) cellA.classList.add('highlight-a');
+                if(cellB) cellB.classList.add('highlight-b');
+                if(cellC && !cellC.classList.contains('highlight-fixedC')) cellC.classList.add('highlight-c');
+                
+                currentStep++;
+            }, 900); 
+        };
+    }
+
+    function updateMatrixExplanation(algo) {
+        const data = matrixChartData[algo];
+        let htmlContent = data.text; 
+        const N_VIZ_DISPLAY = 3;
+
+        if (algo === 'naive' || algo === 'ordered') {
+            const vizIdPrefix = `viz-${algo}`;
+            const innerLoopVar = algo === 'naive' ? 'k' : 'j';
+            const fixedVarsDesc = algo === 'naive' ? 'i=0, j=0 fixed' : 'i=0, k=0 fixed';
+
+            htmlContent += `
+                <div id="${vizIdPrefix}-container" class="mt-6 p-4 border border-slate-300 rounded-lg bg-slate-100 shadow-inner">
+                    <p class="text-center font-semibold text-md mb-2">Visualizing Inner Loop Access (Example ${N_VIZ_DISPLAY}x${N_VIZ_DISPLAY} Matrices)</p>
+                    <p class="text-center text-sm text-slate-600 mb-1">Equation: C[i][j] += A[i][k] * B[k][j]</p>
+                    <p class="text-center text-sm text-slate-600 mb-3">Innermost loop: <code>for ${innerLoopVar}</code> (with ${fixedVarsDesc})</p>
+                    <div class="flex flex-wrap space-x-1 sm:space-x-2 items-center justify-center my-3 text-xs sm:text-sm">
+                        <div class="text-center mx-1"><p class="font-medium">A</p><div id="${vizIdPrefix}-A" class="grid grid-cols-${N_VIZ_DISPLAY} gap-px w-16 h-16 sm:w-20 sm:h-20 border border-slate-400 bg-white p-px"></div></div>
+                        <span class="text-lg sm:text-xl font-bold mx-1">*</span>
+                        <div class="text-center mx-1"><p class="font-medium">B</p><div id="${vizIdPrefix}-B" class="grid grid-cols-${N_VIZ_DISPLAY} gap-px w-16 h-16 sm:w-20 sm:h-20 border border-slate-400 bg-white p-px"></div></div>
+                        <span class="text-lg sm:text-xl font-bold mx-1">➞</span>
+                        <div class="text-center mx-1"><p class="font-medium">C</p><div id="${vizIdPrefix}-C" class="grid grid-cols-${N_VIZ_DISPLAY} gap-px w-16 h-16 sm:w-20 sm:h-20 border border-slate-400 bg-white p-px"></div></div>
+                    </div>
+                    <div class="text-center">
+                        <button id="run-${vizIdPrefix}" class="btn-primary px-3 py-1 rounded-md text-sm">Run Inner Loop (over ${innerLoopVar})</button>
+                        <p id="${vizIdPrefix}-status" class="text-xs sm:text-sm mt-1 text-slate-500 h-4">Ready (i=0, ${algo === 'naive' ? 'j=0' : 'k=0'})</p>
+                    </div>
+                </div>`;
+        }
+        document.getElementById('matrix-explanation').innerHTML = htmlContent;
+
+        if (algo === 'naive' || algo === 'ordered') {
+            setupMatrixVisualization(algo);
+        }
+    }
+    
+    initializeMatrixChart();
+    const matrixSelect = document.getElementById('matrix-algo-select');
+    matrixSelect.addEventListener('change', (e) => {
+        if (currentMatrixVizIntervalId) clearInterval(currentMatrixVizIntervalId); // Stop ongoing viz if algo changes
+        updateMatrixExplanation(e.target.value);
+    });
+    updateMatrixExplanation('naive'); 
+    
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            tabContents.forEach(content => content.classList.add('hidden'));
+            document.getElementById(`${tab.dataset.tab}-content`).classList.remove('hidden');
+        });
+    });
+
+    const cacheLevels = document.querySelectorAll('.cache-level');
+    const hierarchyInfo = document.getElementById('hierarchy-info');
+    cacheLevels.forEach(level => {
+        level.addEventListener('mouseenter', () => {
+            hierarchyInfo.textContent = level.dataset.info;
+            hierarchyInfo.classList.remove('opacity-0');
+        });
+    });
+    document.getElementById('cache-hierarchy').addEventListener('mouseleave', () => {
+        hierarchyInfo.textContent = 'Hover over a level for information.';
+        hierarchyInfo.classList.add('opacity-0');
+    });
+
+    const pitfallCards = document.querySelectorAll('.pitfall-card');
+    pitfallCards.forEach(card => {
+        const header = card.querySelector('.pitfall-header');
+        const content = card.querySelector('.pitfall-content');
+        const icon = header.querySelector('span');
+
+        header.addEventListener('click', () => {
+            const isExpanded = content.style.maxHeight && content.style.maxHeight !== '0px';
+            if (isExpanded) {
+                content.style.maxHeight = '0px';
+                content.style.paddingTop = '0';
+                content.style.paddingBottom = '0';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.maxHeight = content.scrollHeight + 'px';
+                content.style.paddingTop = '1.5rem';
+                content.style.paddingBottom = '1.5rem';
+                icon.style.transform = 'rotate(180deg)';
+            }
+        });
+    });
+
+    const navLinks = document.querySelectorAll('.nav-link');
+    const sections = document.querySelectorAll('section[id]');
+    window.addEventListener('scroll', () => {
+        let current = '';
+        sections.forEach(section => {
+            const sectionTop = section.offsetTop;
+            if (pageYOffset >= sectionTop - 80) { 
+                current = section.getAttribute('id');
+            }
+        });
+        navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === `#${current}`) {
+                link.classList.add('active');
+            }
+        });
+    });
+
+    function createMemoryBlocks(containerId, numBlocks, isSoA) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = ''; 
+        const wrapper = document.createElement('div');
+        wrapper.className = 'grid grid-cols-4 gap-1'; 
+        for (let i = 0; i < numBlocks; i++) {
+            const block = document.createElement('div');
+            block.className = `h-8 rounded flex items-center justify-center text-xs font-mono transition-colors duration-200`;
+            if (isSoA) { 
+                const type = Math.floor(i / (numBlocks / 3)) % 3; 
+                const indexInTypeArray = i % (numBlocks/3);
+                block.classList.add(type === 0 ? 'bg-red-200' : type === 1 ? 'bg-green-200' : 'bg-blue-200');
+                block.textContent = ['x', 'y', 'z'][type] + indexInTypeArray;
+            } else { 
+                const type = i % 4; 
+                if (type === 3) { 
+                    block.classList.add('bg-slate-200');
+                    block.textContent = 'pad';
+                } else {
+                    block.classList.add(['bg-red-200', 'bg-green-200', 'bg-blue-200'][type]);
+                    block.textContent = ['x', 'y', 'z'][type] + Math.floor(i / 4);
+                }
+            }
+            block.id = `${containerId}-block-${i}`;
+            wrapper.appendChild(block);
+        }
+        container.appendChild(wrapper);
+    }
+    
+    let currentAoSIntervalId = null;
+    function animateAccess(containerId, accessPattern, explanation) {
+        if (currentAoSIntervalId) clearInterval(currentAoSIntervalId);
+        document.getElementById('aos-soa-explanation').textContent = "Running simulation...";
+        const allBlocks = document.querySelectorAll(`#${containerId} > div > div`); 
+        allBlocks.forEach(b => { 
+            b.classList.remove('ring-4', 'ring-amber-500');
+            b.classList.add('opacity-50');
+        });
+
+        let i = 0;
+        function step() {
+            if (i < accessPattern.length) {
+                const blockIndicesToHighlight = accessPattern[i];
+                blockIndicesToHighlight.forEach(idx => {
+                    const block = document.getElementById(`${containerId}-block-${idx}`);
+                    if (block) {
+                         block.classList.remove('opacity-50');
+                         block.classList.add('ring-4', 'ring-amber-500');
+                    }
+                });
+                i++;
+                currentAoSIntervalId = setTimeout(step, 350);
+            } else {
+                 document.getElementById('aos-soa-explanation').innerHTML = explanation;
+                 currentAoSIntervalId = null;
+            }
+        }
+        step();
+    }
+    
+    createMemoryBlocks('aos-viz', 16, false); 
+    createMemoryBlocks('soa-viz', 12, true);  
+
+    document.getElementById('run-aos').addEventListener('click', () => {
+        const aosAccess = [ [0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15] ];
+        animateAccess('aos-viz', aosAccess, `<strong>AoS Result:</strong> 4 separate cache lines (visualized as groups of 4 blocks) were accessed. Since we only needed the 'x' values (red), much of the data loaded (y, z, pad) was unused within those lines. This is inefficient for this access pattern.`);
+    });
+
+    document.getElementById('run-soa').addEventListener('click', () => {
+        const soaAccess = [ [0,1,2,3] ];
+        animateAccess('soa-viz', soaAccess, `<strong>SoA Result:</strong> Only 1 cache line (all red blocks) was accessed. All the data loaded was relevant ('x' values), and they were all contiguous in memory. This is highly cache-efficient for this access pattern.`);
+    });
+    
+    function createLoopGrid(containerId, size) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        for (let i = 0; i < size * size; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'w-full aspect-square bg-slate-300 rounded-sm transition-colors duration-150 flex items-center justify-center text-[0.6rem] text-slate-600';
+            cell.id = `${containerId}-cell-${i}`;
+            container.appendChild(cell);
+        }
+    }
+
+    let currentLoopIntervalId = null;
+    function animateLoop(containerId, pattern, buttonId) {
+        if (currentLoopIntervalId) clearInterval(currentLoopIntervalId);
+        const button = document.getElementById(buttonId);
+        button.disabled = true;
+        button.textContent = "Running...";
+        
+        const size = 8;
+        createLoopGrid(containerId, size); 
+        let i = 0;
+        function step() {
+            if (i < pattern.length) {
+                const cell = document.getElementById(`${containerId}-cell-${pattern[i]}`);
+                if (cell) {
+                    cell.className = 'w-full aspect-square bg-amber-500 rounded-sm transition-colors duration-150 flex items-center justify-center text-[0.6rem] text-white';
+                    cell.textContent = i;
+                }
+                i++;
+                currentLoopIntervalId = setTimeout(step, 30);
+            } else {
+                 button.disabled = false;
+                 button.textContent = "Run Again";
+                 currentLoopIntervalId = null;
+            }
+        }
+        step();
+    }
+    
+    const size = 8;
+    createLoopGrid('good-loop-viz', size);
+    createLoopGrid('bad-loop-viz', size);
+    
+    const goodPattern = Array.from({length: size * size}, (_, i) => i);
+    const badPattern = [];
+    for(let col = 0; col < size; col++) {
+        for (let row = 0; row < size; row++) {
+            badPattern.push(row * size + col);
+        }
+    }
+    
+    document.getElementById('run-good-loop').addEventListener('click', () => animateLoop('good-loop-viz', goodPattern, 'run-good-loop'));
+    document.getElementById('run-bad-loop').addEventListener('click', () => animateLoop('bad-loop-viz', badPattern, 'run-bad-loop'));
+
+});
+</script>
+</body>
+</html>

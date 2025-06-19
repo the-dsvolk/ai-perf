@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive CUDA Execution Model Visualizer</title>
+    <!-- Visualization & Content Choices: 
+        - Report Info (NVIDIA Blog): Block/Thread/Warp relationship, dim3 configuration, kernel launch. Goal: Show direct link between block size and warp formation, provide accurate code examples. Viz: Dynamic HTML divs for threads/warps controlled by slider; Syntax-highlighted C++ code blocks in tabs. Interaction: Slider for thread count; Tabs for content switching. Justification: Interactive visualization for immediate feedback; Clear code examples for practical understanding, aligned with NVIDIA's explanations. Library: Vanilla JS + Tailwind.
+        - Report Info (NVIDIA Blog): Hierarchy definitions (Grid, Block, Thread), built-in variables (threadIdx, blockIdx, etc.), 2D Grid/Block structure (Figure 3). Goal: Provide clear, authoritative reference and visualize 2D indexing. Viz: Structured text in tabbed content area; Static HTML/Tailwind diagram for 2D Grid/Block/Thread indexing. Interaction: Click to switch tabs. Justification: Organizes detailed information cleanly, mirroring blog structure where appropriate; New diagram clarifies 2D concepts. Library: Vanilla JS.
+        - Report Info (NVIDIA Blog & General CUDA): Warp size (32), SIMT, implications of block size on warp efficiency. Goal: Emphasize fixed hardware constraints and performance implications. Viz: Threads visually grouped into containers of 32 in 'Physical View'; Dynamic 'Wasted Thread Slots' metric and 'Performance Implication' text. Justification: Makes hardware unit and efficiency trade-offs explicit. Library: Vanilla JS/CSS.
+        - Report Info (CUDA Common Practice): Host/Device memory allocation, data transfers, kernel launch sequence. Goal: Illustrate typical CUDA application workflow and provide memory management code examples. Viz: New tab 'Memory Management' with syntax-highlighted C++ code for cudaMalloc, cudaMemcpy, cudaFree; New HTML/Tailwind diagram illustrating Host-Device interaction flow. Interaction: Tabs for content. Justification: Provides practical code for fundamental memory operations and a visual summary of the application lifecycle. Library: Vanilla JS + Tailwind for diagram/tabs.
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa; /* Light gray background */
+            color: #212529; /* Dark gray text */
+        }
+        .nv-green { color: #76B900; } /* NVIDIA Green */
+        .accent-nv-green { accent-color: #76B900; }
+        .tab {
+            transition: all 0.2s ease-in-out;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid transparent;
+        }
+        .tab.active {
+            border-bottom-color: #76B900;
+            color: #76B900;
+            font-weight: 600;
+        }
+        .thread-vis {
+            transition: all 0.1s ease-in-out;
+        }
+        .warp-container-vis {
+            transition: all 0.2s ease-in-out;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .code-block {
+            background-color: #2d3748; /* Dark blue-gray for code blocks */
+            color: #e2e8f0; /* Light gray text for code */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            white-space: pre-wrap;
+            font-size: 0.875rem; /* 14px */
+            line-height: 1.5;
+            overflow-x: auto;
+        }
+        .code-block .comment { color: #66c2a5; } 
+        .code-block .keyword { color: #fc8d62; } 
+        .code-block .type { color: #8da0cb; }    
+        .code-block .function { color: #e78ac3; } 
+        .code-block .number { color: #a6d854; }  
+        .code-block .preprocessor { color: #ffd92f; } 
+        .code-block .string { color: #e5c07b; }
+
+
+        .grid-diagram-container {
+            background-color: #e9ecef; 
+            border: 1px solid #ced4da; 
+            padding: 1rem;
+            border-radius: 0.375rem; 
+        }
+        .grid-diagram-grid {
+            border: 2px solid #495057; 
+            display: inline-grid; 
+            grid-template-columns: repeat(3, minmax(0, 1fr)); 
+            gap: 0.5rem; 
+            padding: 0.5rem;
+            background-color: #f8f9fa; 
+        }
+        .grid-diagram-block {
+            border: 1px solid #adb5bd; 
+            background-color: #ffffff;
+            padding: 0.25rem;
+            text-align: center;
+            font-size: 0.75rem; 
+            min-width: 60px;
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .grid-diagram-block.highlighted-block {
+            border: 2px solid #76B900; 
+            background-color: #e6f7d0; 
+            padding: 0.5rem; 
+        }
+        .grid-diagram-thread-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr)); 
+            gap: 0.25rem; 
+            width: 100%;
+        }
+        .grid-diagram-thread {
+            border: 1px solid #dee2e6; 
+            background-color: #f8f9fa;
+            font-size: 0.625rem; 
+            min-width: 20px;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flow-chart-container {
+            background-color: #f1f5f9; /* Light slate */
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0; /* Slate 200 */
+        }
+        .flow-step {
+            background-color: #ffffff; /* White */
+            border: 1px solid #cbd5e1; /* Slate 300 */
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem; /* 6px */
+            text-align: center;
+            font-size: 0.875rem; /* 14px */
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06);
+        }
+        .flow-step.cpu { border-left: 4px solid #3b82f6; /* Blue 500 */ }
+        .flow-step.gpu { border-left: 4px solid #10b981; /* Emerald 500 */ }
+        .flow-arrow {
+            font-size: 1.5rem; /* 24px */
+            color: #64748b; /* Slate 500 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 0;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">CUDA Programming Model Explorer</h1>
+            <p class="mt-2 text-lg text-gray-600">An interactive guide to Grids, Blocks, Threads, Warps, and Memory.</p>
+        </header>
+
+        <main class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+            
+            <section id="interactive-tool" class="mb-10">
+                <div class="bg-slate-50 rounded-lg p-6 border border-slate-200">
+                    <h2 class="text-xl font-semibold text-slate-700 mb-3">Configure Your Thread Block</h2>
+                    <p class="text-sm text-slate-600 mb-1">In CUDA, developers specify the number of threads per block. This choice directly impacts how the GPU hardware organizes these threads into Warps (groups of 32) for SIMT execution.</p>
+                    <p class="text-sm text-slate-600 mb-5">Use the slider below to visualize this relationship and its performance implications.</p>
+                    <div class="mt-4">
+                        <label for="threadsPerBlockSlider" class="block font-medium text-slate-800">Threads per Block: <span id="threadsPerBlockValue" class="font-bold nv-green text-2xl align-middle ml-2">256</span></label>
+                        <input id="threadsPerBlockSlider" type="range" min="32" max="512" step="32" value="256" class="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-nv-green mt-2">
+                         <div class="flex justify-between text-xs text-slate-500 mt-2 px-1">
+                            <span>32</span>
+                            <span>128</span>
+                            <span>256</span>
+                            <span>384</span>
+                            <span>512</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="metrics" class="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
+                <div class="bg-sky-50 p-4 rounded-lg border border-sky-200">
+                    <h3 class="text-xs font-semibold uppercase text-sky-700 tracking-wider">Threads per Block</h3>
+                    <p id="metricThreads" class="text-3xl font-bold text-sky-600 mt-1">256</p>
+                </div>
+                <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                    <h3 class="text-xs font-semibold uppercase text-indigo-700 tracking-wider">Warps per Block</h3>
+                    <p id="metricWarps" class="text-3xl font-bold text-indigo-600 mt-1">8</p>
+                </div>
+                <div class="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <h3 class="text-xs font-semibold uppercase text-amber-700 tracking-wider">Warp Size (Fixed)</h3>
+                    <p class="text-3xl font-bold text-amber-600 mt-1">32</p>
+                </div>
+                <div class="bg-rose-50 p-4 rounded-lg border border-rose-200">
+                    <h3 class="text-xs font-semibold uppercase text-rose-700 tracking-wider">Inactive Thread Slots</h3>
+                    <p id="metricWasted" class="text-3xl font-bold text-rose-600 mt-1">0</p>
+                </div>
+            </section>
+
+             <section class="mb-10 p-5 bg-slate-100 rounded-lg border border-slate-200">
+                <h3 class="font-semibold text-slate-800 text-lg">Performance Implication:</h3>
+                <p id="implicationText" class="text-slate-700 mt-1 text-sm leading-relaxed">A block size of 256 threads is a common and efficient choice. It creates 8 full warps, ensuring no hardware resources are wasted on inactive threads within the last warp.</p>
+            </section>
+
+            <section id="visualization" class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-700 mb-2">Logical View: Programmer's Thread Block</h2>
+                    <p class="text-sm text-slate-500 mb-4">This represents the block of threads as defined by the programmer. Each small square is a thread, colored by the warp it will belong to.</p>
+                    <div id="blockContainer" class="bg-slate-100 p-3 rounded-lg border-2 border-dashed border-slate-300 min-h-[280px] flex flex-wrap gap-1 content-start items-start">
+                    </div>
+                </div>
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-700 mb-2">Physical View: Hardware Warp Grouping</h2>
+                    <p class="text-sm text-slate-500 mb-4">The GPU hardware partitions the block's threads into fixed-size Warps of 32. This is how the hardware schedules and executes them.</p>
+                    <div id="warpsContainer" class="space-y-3 min-h-[280px]">
+                    </div>
+                </div>
+            </section>
+            
+            <section id="explanations" class="mt-12">
+                 <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">CUDA Concepts Explained</h2>
+                <div class="border-b border-gray-200 mb-6">
+                    <nav class="flex -mb-px flex-wrap space-x-4 sm:space-x-8 justify-center" aria-label="Tabs">
+                        <button class="tab active" data-tab="hierarchy">Execution Hierarchy</button>
+                        <button class="tab" data-tab="code">Defining in Code</button>
+                        <button class="tab" data-tab="warp">Warps & SIMT</button>
+                        <button class="tab" data-tab="memory">Memory Management</button>
+                    </nav>
+                </div>
+                <div class="mt-6 max-w-4xl mx-auto">
+                    <div id="tab-content-hierarchy" class="tab-content space-y-4 text-slate-700 leading-relaxed">
+                        <p>The CUDA programming model organizes parallel computation through a hierarchy: Grids, Thread Blocks, and Threads. This structure allows developers to manage and scale parallelism effectively on the GPU.</p>
+                        <p><strong class="font-semibold text-slate-900">Grid:</strong> A kernel is launched as a grid of thread blocks. A grid can be 1D, 2D, or 3D, allowing a natural mapping of computation to the problem's data structure (e.g., a 2D grid for image processing). All blocks in a grid run the same kernel code.</p>
+                        <p><strong class="font-semibold text-slate-900">Thread Block:</strong> A thread block is a group of threads that execute concurrently on the same Streaming Multiprocessor (SM). Threads within a block can cooperate by sharing data via fast on-chip <strong class="italic">shared memory</strong> and can synchronize their execution using barriers like <code class="text-sm bg-slate-200 px-1 rounded">__syncthreads()</code>. Blocks can also be 1D, 2D, or 3D.</p>
+                        <p><strong class="font-semibold text-slate-900">Thread:</strong> The fundamental unit of parallel execution. Each thread executes an instance of the kernel function. Threads are identified within their block by a unique <code class="text-sm bg-slate-200 px-1 rounded">threadIdx</code> (which can be 1D, 2D, or 3D). A global thread ID can be computed using <code class="text-sm bg-slate-200 px-1 rounded">threadIdx</code> and <code class="text-sm bg-slate-200 px-1 rounded">blockIdx</code> (the block's unique ID within the grid).</p>
+                        
+                        <div class="my-6">
+                            <h4 class="font-semibold text-slate-800 text-md mb-3">Visualizing a 2D Grid of 2D Blocks:</h4>
+                            <p class="text-sm text-slate-600 mb-3">The diagram below illustrates how a 2D grid is composed of 2D blocks, and how threads within a block are indexed. This is analogous to Figure 3 in the NVIDIA "CUDA Refresher" blog post.</p>
+                            <div class="grid-diagram-container flex flex-col items-center">
+                                <p class="text-sm font-medium text-slate-700 mb-1">Grid (e.g., <code class="text-xs">gridDim(3,2)</code>)</p>
+                                <div class="grid-diagram-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+                                    <div class="grid-diagram-block">blockIdx<br>(0,0)</div>
+                                    <div class="grid-diagram-block highlighted-block">
+                                        <span class="mb-1 text-xs">blockIdx (1,0)</span>
+                                        <div class="grid-diagram-thread-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+                                            <div class="grid-diagram-thread">t(0,0)</div> <div class="grid-diagram-thread">t(1,0)</div>
+                                            <div class="grid-diagram-thread">t(0,1)</div> <div class="grid-diagram-thread">t(1,1)</div>
+                                        </div>
+                                        <span class="mt-1 text-xs">(e.g. blockDim(2,2))</span>
+                                    </div>
+                                    <div class="grid-diagram-block">blockIdx<br>(2,0)</div>
+                                    <div class="grid-diagram-block">blockIdx<br>(0,1)</div>
+                                    <div class="grid-diagram-block">blockIdx<br>(1,1)</div>
+                                    <div class="grid-diagram-block">blockIdx<br>(2,1)</div>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-2">Each 'blockIdx(x,y)' is a thread block. The highlighted block shows threads 't(x,y)' representing 'threadIdx(x,y)'.</p>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div id="tab-content-code" class="tab-content hidden space-y-4 text-slate-700 leading-relaxed">
+                        <p>Developers use CUDA C/C++ to define kernels and launch them. The `dim3` type is crucial for specifying the dimensions of grids and blocks.</p>
+                        <p><strong class="font-semibold text-slate-900">Kernel Definition:</strong> A C function executed on the GPU, marked with `__global__`.</p>
+                        <div class="code-block">
+<span class="preprocessor">__global__</span> <span class="keyword">void</span> <span class="function">myVectorAdd</span>(<span class="keyword">float</span>* A, <span class="keyword">float</span>* B, <span class="keyword">float</span>* C, <span class="keyword">int</span> N) {
+    <span class="keyword">int</span> i = blockDim.x * blockIdx.x + threadIdx.x;
+    <span class="keyword">if</span> (i < N) {
+        C[i] = A[i] + B[i];
+    }
+}
+                        </div>
+                        <p class="mt-4"><strong class="font-semibold text-slate-900">Execution Configuration:</strong> When launching a kernel, you specify the grid and block dimensions using `<<<gridDim, blockDim>>>`.</p>
+                        <div class="code-block">
+<span class="comment">// Host code (CPU)</span>
+<span class="keyword">int</span> N = <span class="number">1024</span> * <span class="number">1024</span>; <span class="comment">// Example: 1 million elements</span>
+<span class="keyword">int</span> threadsPerBlock = <span class="number">256</span>;
+<span class="keyword">int</span> blocksPerGrid = (N + threadsPerBlock - <span class="number">1</span>) / threadsPerBlock;
+
+<span class="comment">// Define dimensions using dim3</span>
+<span class="type">dim3</span> <span class="function">dimGrid</span>(blocksPerGrid);        <span class="comment">// 1D Grid</span>
+<span class="type">dim3</span> <span class="function">dimBlock</span>(threadsPerBlock);   <span class="comment">// 1D Block</span>
+
+<span class="comment">// Launch the kernel</span>
+<span class="function">myVectorAdd</span><<<dimGrid, dimBlock>>>(d_A, d_B, d_C, N);
+
+<span class="comment">// For a 2D data structure (e.g., image processing)</span>
+<span class="comment">// dim3 dimGrid(imageWidth / tileWidth, imageHeight / tileHeight);</span>
+<span class="comment">// dim3 dimBlock(tileWidth, tileHeight);</span>
+<span class="comment">// my2DKernel<<<dimGrid, dimBlock>>>(...);</span>
+                        </div>
+                        <p class="mt-4"><strong class="font-semibold text-slate-900">Built-in Variables:</strong> Inside the kernel, threads use variables like:</p>
+                        <ul class="list-disc list-inside ml-4 text-sm">
+                            <li><code class="bg-slate-200 px-1 rounded">threadIdx.(x,y,z)</code>: Thread index within its block.</li>
+                            <li><code class="bg-slate-200 px-1 rounded">blockIdx.(x,y,z)</code>: Block index within the grid.</li>
+                            <li><code class="bg-slate-200 px-1 rounded">blockDim.(x,y,z)</code>: Dimensions of the thread block.</li>
+                            <li><code class="bg-slate-200 px-1 rounded">gridDim.(x,y,z)</code>: Dimensions of the grid.</li>
+                        </ul>
+                    </div>
+                    <div id="tab-content-warp" class="tab-content hidden space-y-4 text-slate-700 leading-relaxed">
+                        <p><strong class="font-semibold text-slate-900">Warp:</strong> The hardware groups threads within a block into Warps of 32 threads. A warp is the fundamental unit of scheduling and execution on an SM. For instance, a block of 256 threads is divided into $256 / 32 = 8$ warps.</p>
+                        <p><strong class="font-semibold text-slate-900">SIMT (Single Instruction, Multiple Thread):</strong> All 32 threads in a warp execute the same instruction at the same time, but on different data. This is highly efficient if all threads follow the same execution path.</p>
+                        <p><strong class="font-semibold text-slate-900">Warp Divergence:</strong> If threads within a warp encounter a conditional statement (e.g., `if-else`) and take different paths, the paths are executed serially for that warp. Some threads will be temporarily idle while others execute their path. This can significantly impact performance. Minimizing divergence is a key optimization.</p>
+                        <p>Choosing a block size that is a multiple of 32 (the warp size) is crucial. If not, the last warp will have inactive threads, but the hardware still allocates resources for a full warp, leading to inefficiency.</p>
+                    </div>
+                    <div id="tab-content-memory" class="tab-content hidden space-y-4 text-slate-700 leading-relaxed">
+                        <p>CUDA programming involves managing memory on both the CPU (host) and the GPU (device). Data must be transferred to the GPU for processing and results transferred back.</p>
+                        
+                        <h4 class="font-semibold text-slate-800 text-md mt-6 mb-3">Typical CUDA Application Flow:</h4>
+                        <div class="flow-chart-container">
+                            <div class="space-y-2">
+                                <div class="flow-step cpu">1. Allocate Host Memory (CPU RAM) for input/output data.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step cpu">2. Allocate Device Memory (GPU VRAM) using <code class="text-xs bg-slate-200 px-1 rounded">cudaMalloc()</code>.</div>
+                                <div class="flow-arrow">↓ <span class="text-xs ml-2 text-slate-500">(Host to Device)</span></div>
+                                <div class="flow-step cpu">3. Copy Input Data from Host to Device using <code class="text-xs bg-slate-200 px-1 rounded">cudaMemcpy()</code>.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step cpu">4. CPU Launches Kernel on GPU <code class="text-xs bg-slate-200 px-1 rounded">myKernel&lt;&lt;&lt;...&gt;&gt;&gt;()</code>.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step gpu">5. GPU Executes Kernel in Parallel (processes data in Device Memory).</div>
+                                <div class="flow-arrow">↓ <span class="text-xs ml-2 text-slate-500">(Device to Host)</span></div>
+                                <div class="flow-step cpu">6. Copy Results from Device to Host using <code class="text-xs bg-slate-200 px-1 rounded">cudaMemcpy()</code>.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step cpu">7. Process Results on CPU.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step cpu">8. Free Device Memory using <code class="text-xs bg-slate-200 px-1 rounded">cudaFree()</code>.</div>
+                                <div class="flow-arrow">↓</div>
+                                <div class="flow-step cpu">9. Free Host Memory.</div>
+                            </div>
+                        </div>
+
+                        <p class="mt-6"><strong class="font-semibold text-slate-900">Code Examples for Memory Operations:</strong></p>
+                        <div class="code-block">
+<span class="comment">// Host code (CPU)</span>
+<span class="keyword">int</span> N = <span class="number">1024</span>;
+<span class="keyword">size_t</span> size = N * <span class="keyword">sizeof</span>(<span class="keyword">float</span>);
+
+<span class="comment">// 1. Allocate Host Memory</span>
+<span class="keyword">float</span>* h_A = (<span class="keyword">float</span>*)<span class="function">malloc</span>(size);
+<span class="keyword">float</span>* h_B = (<span class="keyword">float</span>*)<span class="function">malloc</span>(size);
+<span class="keyword">float</span>* h_C = (<span class="keyword">float</span>*)<span class="function">malloc</span>(size);
+<span class="comment">// (Initialize h_A, h_B here...)</span>
+
+<span class="comment">// 2. Allocate Device Memory</span>
+<span class="keyword">float</span>* d_A, *d_B, *d_C;
+<span class="function">cudaMalloc</span>((<span class="keyword">void</span>**)&d_A, size);
+<span class="function">cudaMalloc</span>((<span class="keyword">void</span>**)&d_B, size);
+<span class="function">cudaMalloc</span>((<span class="keyword">void</span>**)&d_C, size);
+
+<span class="comment">// 3. Copy Input Data Host to Device</span>
+<span class="function">cudaMemcpy</span>(d_A, h_A, size, <span class="type">cudaMemcpyHostToDevice</span>);
+<span class="function">cudaMemcpy</span>(d_B, h_B, size, <span class="type">cudaMemcpyHostToDevice</span>);
+
+<span class="comment">// 4. Launch Kernel (assuming kernel and dims are defined)</span>
+<span class="comment">// myKernel<<<gridDim, blockDim>>>(d_A, d_B, d_C, N);</span>
+<span class="comment">// cudaDeviceSynchronize(); // Wait for kernel to complete</span>
+
+<span class="comment">// 6. Copy Results Device to Host</span>
+<span class="function">cudaMemcpy</span>(h_C, d_C, size, <span class="type">cudaMemcpyDeviceToHost</span>);
+
+<span class="comment">// 7. Process Results (use h_C on CPU)</span>
+
+<span class="comment">// 8. Free Device Memory</span>
+<span class="function">cudaFree</span>(d_A);
+<span class="function">cudaFree</span>(d_B);
+<span class="function">cudaFree</span>(d_C);
+
+<span class="comment">// 9. Free Host Memory</span>
+<span class="function">free</span>(h_A);
+<span class="function">free</span>(h_B);
+<span class="function">free</span>(h_C);
+                        </div>
+                        <p class="mt-4">Error checking for CUDA API calls (e.g., `cudaMalloc`, `cudaMemcpy`) is omitted for brevity but crucial in production code.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer class="text-center mt-12 pt-8 border-t border-slate-200 text-sm text-slate-500">
+            <p>This visualizer is inspired by and references concepts from the NVIDIA Developer Blog.</p>
+            <p>Source: <a href="https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/" target="_blank" rel="noopener noreferrer" class="text-nv-green hover:underline">CUDA Refresher: The CUDA Programming Model</a> by Mark Harris.</p>
+            <p class="mt-2">&copy; 2024 Interactive CUDA Explorer. For educational purposes.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const slider = document.getElementById('threadsPerBlockSlider');
+            const threadsValueDisplay = document.getElementById('threadsPerBlockValue');
+            const metricThreads = document.getElementById('metricThreads');
+            const metricWarps = document.getElementById('metricWarps');
+            const metricWasted = document.getElementById('metricWasted');
+            const implicationText = document.getElementById('implicationText');
+            const blockContainer = document.getElementById('blockContainer');
+            const warpsContainer = document.getElementById('warpsContainer');
+
+            const WARP_SIZE = 32;
+            const warpColors = [
+                'bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-yellow-400', 
+                'bg-indigo-400', 'bg-pink-400', 'bg-purple-400', 'bg-teal-400',
+                'bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 
+                'bg-indigo-500', 'bg-pink-500', 'bg-purple-500', 'bg-teal-500' 
+            ]; 
+            
+            function updateVisuals(threadsPerBlock) {
+                const numWarps = Math.ceil(threadsPerBlock / WARP_SIZE);
+                const wastedThreads = (numWarps * WARP_SIZE) - threadsPerBlock;
+                
+                threadsValueDisplay.textContent = threadsPerBlock;
+                metricThreads.textContent = threadsPerBlock;
+                metricWarps.textContent = numWarps;
+                metricWasted.textContent = wastedThreads;
+
+                if (wastedThreads > 0) {
+                     implicationText.textContent = 'Warning: A block size of ' + threadsPerBlock + ' is not a multiple of ' + WARP_SIZE + '. The last warp will have ' + wastedThreads + ' inactive thread slot(s), leading to potentially wasted hardware resources.';
+                     implicationText.parentElement.classList.replace('bg-slate-100', 'bg-rose-100');
+                     implicationText.parentElement.classList.replace('border-slate-200', 'border-rose-200');
+                } else {
+                     implicationText.textContent = 'A block size of ' + threadsPerBlock + ' threads creates ' + numWarps + ' full warp(s) with no inactive slots. This is generally an efficient configuration.';
+                     implicationText.parentElement.classList.replace('bg-rose-100', 'bg-slate-100');
+                     implicationText.parentElement.classList.replace('border-rose-200', 'border-slate-200');
+                }
+
+                blockContainer.innerHTML = '';
+                warpsContainer.innerHTML = '';
+                
+                // Logical View
+                for (let i = 0; i < threadsPerBlock; i++) {
+                    const warpIndex = Math.floor(i / WARP_SIZE);
+                    const color = warpColors[warpIndex % warpColors.length];
+                    const threadDiv = document.createElement('div');
+                    threadDiv.className = 'thread-vis w-[10px] h-[10px] sm:w-3 sm:h-3 rounded-sm ' + color;
+                    threadDiv.title = 'Thread ' + i + ' (Warp ' + warpIndex + ')';
+                    blockContainer.appendChild(threadDiv);
+                }
+
+                // Physical View
+                for (let i = 0; i < numWarps; i++) {
+                    const warpEl = document.createElement('div');
+                    warpEl.className = 'warp-container-vis bg-slate-50 p-3 rounded-lg border border-slate-200 fade-in shadow';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'flex justify-between items-center mb-2';
+                    
+                    const title = document.createElement('h4');
+                    title.className = 'text-xs sm:text-sm font-semibold text-slate-700';
+                    title.textContent = 'Warp ' + i;
+
+                    const color = warpColors[i % warpColors.length];
+                    const swatch = document.createElement('div');
+                    swatch.className = 'w-3 h-3 sm:w-4 sm:h-4 rounded-full ' + color + ' border-2 border-white ring-1 ring-slate-300';
+                    
+                    header.appendChild(title);
+                    header.appendChild(swatch);
+                    
+                    const threadGrid = document.createElement('div');
+                    threadGrid.className = 'grid grid-cols-8 gap-1'; // 8 columns for 32 threads (4 rows)
+
+                    const threadsInThisWarp = (i === numWarps - 1 && wastedThreads > 0) ? WARP_SIZE - wastedThreads : WARP_SIZE;
+                    
+                    for (let j = 0; j < WARP_SIZE; j++) {
+                        const threadEl = document.createElement('div');
+                        if (j < threadsInThisWarp) {
+                             threadEl.className = 'thread-vis w-full h-4 sm:h-5 rounded-sm ' + color;
+                             threadEl.title = 'Thread ' + (i * WARP_SIZE + j);
+                        } else {
+                            threadEl.className = 'thread-vis w-full h-4 sm:h-5 rounded-sm bg-slate-300 border border-slate-400 opacity-70';
+                            threadEl.title = 'Inactive Slot';
+                        }
+                        threadGrid.appendChild(threadEl);
+                    }
+                    
+                    warpEl.appendChild(header);
+                    warpEl.appendChild(threadGrid);
+                    warpsContainer.appendChild(warpEl);
+                }
+            }
+
+            slider.addEventListener('input', (e) => {
+                updateVisuals(parseInt(e.target.value, 10));
+            });
+
+            const tabs = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const initialTab = 'hierarchy'; // Default tab
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.dataset.tab;
+
+                    tabs.forEach(t => t.classList.remove('active', 'nv-green'));
+                    tab.classList.add('active', 'nv-green');
+
+                    tabContents.forEach(content => {
+                        content.classList.toggle('hidden', content.id !== 'tab-content-' + targetTab);
+                    });
+                });
+                // Set initial active tab
+                if (tab.dataset.tab === initialTab) {
+                    tab.classList.add('active', 'nv-green');
+                }
+            });
+            
+            tabContents.forEach(content => {
+                content.classList.toggle('hidden', content.id !== 'tab-content-' + initialTab);
+            });
+
+
+            // Initial render
+            updateVisuals(parseInt(slider.value, 10));
+        });
+    </script>
+</body>
+</html>

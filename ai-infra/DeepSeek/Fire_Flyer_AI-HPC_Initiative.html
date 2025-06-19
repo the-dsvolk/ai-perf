@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-ARAMCO-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire-Flyer AI-HPC Interactive Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- Visualization & Content Choices:
+        - Overview: HTML/CSS block diagram (Goal: Inform, Interaction: Hover tooltips).
+        - System Diagram: Mermaid.js graph with enhanced font size (Goal: Inform, Interaction: Visual structure, Justification: Standard for complex system overview).
+        - Detailed Diagram: Mermaid.js graph with enhanced font size (Goal: Inform/Organize, Interaction: Visual structure, Justification: Deeper dive into node and network details).
+        - Compute Node: HTML/CSS diagram from Fig 4 (Goal: Organize/Inform, Interaction: Click for specs, Justification: Visual clarity of components).
+        - Storage Node: HTML/CSS diagram (Goal: Organize/Inform, Interaction: Click for specs, Justification: Visual clarity).
+        - Network Fabric: HTML/CSS diagram from Fig 5 (Goal: Organize/Inform, Interaction: Click for details, Justification: Visual topology).
+        - Software (HFReduce, HaiScale, 3FS): HTML/CSS flow diagrams (Goal: Explain Process, Interaction: Click steps, Justification: Simplify complex software logic).
+        - Performance Charts (Cost, Energy, GPU Perf, HFReduce, 3FS Throughput, LLM Speedup): Chart.js bar/line charts (Goal: Compare/Show Change, Interaction: Hover for values, Justification: Standard, clear data viz for quantitative results).
+        - All text from report. NO SVG graphics manually created. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .sticky-nav { position: sticky; top: 0; z-index: 50; }
+        .nav-link { transition: all 0.3s ease; }
+        .nav-link.active { color: #0284c7; border-bottom-color: #0284c7; font-weight: 600; }
+        .nav-link:hover { color: #0369a1; }
+        .content-section { min-height: 80vh; }
+        .diagram-component { border: 2px solid transparent; transition: all 0.3s ease; cursor: pointer; }
+        .diagram-component:hover { border-color: #38bdf8; }
+        .diagram-component.selected { border-color: #0ea5e9; background-color: #e0f2fe; }
+        .chart-container { position: relative; width: 100%; max-width: 700px; margin-left: auto; margin-right: auto; height: 350px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .has-tooltip:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        .mermaid-container {
+            width: 100%; /* Take full width of parent column */
+            overflow: auto; /* Allows scrolling for wide/tall diagrams */
+            min-height: 1200px; /* Doubled from 600px */
+            max-height: 95vh; /* Increased max-height */
+            padding: 1rem;
+            background-color: #f8fafc; /* Slightly off-white background for the container itself */
+            display: flex; /* Kept for centering if content is smaller */
+            justify-content: center; /* Kept for centering */
+            align-items: center; /* Kept for centering */
+        }
+        .mermaid svg {
+            min-width: 1600px; /* Doubled from 800px */
+            width: 100%; /* Take full width available */
+            max-width: 2800px; /* Doubled from 1400px */
+            height: auto; /* Maintain aspect ratio */
+            background-color: #ffffff; /* White background for the diagram itself */
+            display: block; /* Helps with layout */
+            margin: 0 auto; /* Centers SVG if it's narrower than container */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-700">
+
+    <header class="bg-white shadow-md sticky-nav">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="font-bold text-xl text-sky-600">Fire-Flyer AI-HPC Explorer</span>
+                </div>
+                <nav class="hidden md:flex space-x-2 lg:space-x-4">
+                    <a href="#overview" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Overview</a>
+                    <a href="#system-diagram" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">System Diagram</a>
+                    <a href="#detailed-diagram" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Detailed Diagram</a>
+                    <a href="#hardware" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Hardware</a>
+                    <a href="#software" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Software</a>
+                    <a href="#performance" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Performance</a>
+                    <a href="#conclusion" class="nav-link px-2 py-2 rounded-md text-sm font-medium border-b-2 border-transparent">Conclusion</a>
+                </nav>
+                <div class="md:hidden">
+                    <button id="mobile-menu-button" class="text-slate-500 hover:text-sky-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="md:hidden hidden bg-white shadow-lg">
+            <a href="#overview" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Overview</a>
+            <a href="#system-diagram" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">System Diagram</a>
+            <a href="#detailed-diagram" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Detailed Diagram</a>
+            <a href="#hardware" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Hardware</a>
+            <a href="#software" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Software</a>
+            <a href="#performance" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Performance</a>
+            <a href="#conclusion" class="block nav-link px-4 py-3 text-base font-medium border-b-2 border-transparent">Conclusion</a>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <section id="overview" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Overview: The Fire-Flyer AI-HPC Initiative</h2>
+                <p class="mb-4 text-lg">The Fire-Flyer AI-HPC system represents a groundbreaking approach to building cost-effective, high-performance computing infrastructure. Designed specifically for the demanding workloads of Deep Learning (DL) and Large Language Models (LLMs), it achieves remarkable efficiency through a meticulous software-hardware co-design.</p>
+                <p class="mb-4">Key achievements of the Fire-Flyer 2 cluster (10,000 NVIDIA A100 PCIe GPUs) include:</p>
+                <ul class="list-disc list-inside mb-6 space-y-2">
+                    <li>Delivering performance comparable to high-end systems like the NVIDIA DGX-A100.</li>
+                    <li>Achieving approximately <strong class="text-sky-600">half the construction cost</strong> of comparable systems.</li>
+                    <li>Realizing a <strong class="text-sky-600">40% reduction in energy consumption</strong>.</li>
+                </ul>
+                <p class="mb-6">This initiative directly addresses the escalating costs and power demands of modern HPC, offering a blueprint for sustainable and accessible supercomputing. The core philosophy is the synergistic optimization of hardware choices (like PCIe-based GPUs) with sophisticated, custom-built software solutions.</p>
+
+                <h3 class="text-2xl font-semibold text-slate-800 mb-4 mt-8">High-Level System Architecture (Conceptual Blocks)</h3>
+                <p class="mb-4">The Fire-Flyer system is composed of several interconnected key components, all orchestrated to deliver maximum performance and efficiency. This diagram provides a conceptual view of its major subsystems using styled blocks.</p>
+                <div class="border border-slate-300 rounded-lg p-4 sm:p-6 bg-slate-50">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="has-tooltip bg-sky-100 p-4 rounded-md shadow">
+                            <h4 class="font-semibold text-sky-700">GPU Compute Clusters</h4>
+                            <p class="text-sm text-sky-600">(Zone A & Zone B)</p>
+                            <div class="tooltip">Hosts ~1250 nodes with 8 A100 PCIe GPUs each, forming the core computational power.</div>
+                        </div>
+                        <div class="has-tooltip bg-teal-100 p-4 rounded-md shadow md:col-span-1">
+                            <h4 class="font-semibold text-teal-700">Two-Zone Network Fabric</h4>
+                            <p class="text-sm text-teal-600">(InfiniBand Fat-Tree)</p>
+                             <div class="tooltip">High-bandwidth, cost-effective interconnect for compute and storage nodes.</div>
+                        </div>
+                        <div class="has-tooltip bg-emerald-100 p-4 rounded-md shadow">
+                            <h4 class="font-semibold text-emerald-700">3FS Distributed Storage</h4>
+                            <p class="text-sm text-emerald-600">(~200 Storage Nodes)</p>
+                            <div class="tooltip">High-performance, scalable NVMe-based storage system accessible by all compute nodes.</div>
+                        </div>
+                        <div class="has-tooltip bg-amber-100 p-4 rounded-md shadow md:col-span-3">
+                            <h4 class="font-semibold text-amber-700">HAI Platform & Software Stack</h4>
+                            <p class="text-sm text-amber-600">(Management & Optimization)</p>
+                            <div class="tooltip">Orchestrates cluster resources, manages jobs, and includes custom libraries (HFReduce, HaiScale) to maximize hardware utilization.</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-center">
+                        <p class="text-sm text-slate-600">Arrows would conceptually show Management orchestrating all components, and Network connecting Compute and Storage.</p>
+                    </div>
+                </div>
+                 <p class="mt-6">The success of Fire-Flyer lies in its holistic design, where hardware limitations are anticipated and mitigated by intelligent software, and software capabilities are tailored to extract the maximum from the chosen hardware. This co-design is the cornerstone of its cost-effectiveness and performance.</p>
+            </div>
+        </section>
+
+        <section id="system-diagram" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Global System Architecture Diagram</h2>
+                <p class="mb-4 text-lg">This diagram provides a high-level overview of the Fire-Flyer 2 AI-HPC architecture, illustrating the major subsystems and their interconnectivity. It is based on the global infrastructure view described in the research paper and rendered using Mermaid.js.</p>
+                <div class="mermaid-container p-4 border border-slate-300 rounded-lg">
+                    <pre class="mermaid">
+%%{init: { "theme": "base", "fontFamily": "Inter, sans-serif", "fontSize": "44px", "themeVariables": { "primaryColor": "#cce5ff", "primaryTextColor": "#1e3a8a", "primaryBorderColor": "#3b82f6", "lineColor": "#60a5fa", "secondaryColor": "#d1fae5", "secondaryTextColor": "#065f46", "secondaryBorderColor": "#10b981", "tertiaryColor": "#fef3c7", "tertiaryTextColor": "#92400e", "tertiaryBorderColor": "#f59e0b", "mainBkg": "#ffffff", "textColor": "#334155", "nodeBorder": "#6b7280", "labelTextColor": "#4b5563" } } }%%
+graph TD
+    subgraph Fire_Flyer_2_AI_HPC ["Fire-Flyer 2 AI-HPC"]
+        subgraph Management_Orchestration["Management & Orchestration"]
+            HAI_Platform["HAI Platform (Cluster-wide)"]
+        end
+
+        subgraph Network_Fabric ["Network Fabric"]
+            direction LR
+            subgraph Zone_A ["Zone A"]
+                direction TB
+                Spine_A["Spine Switches (Zone A)"]
+                Leaf_A["Leaf Switches (Zone A)"]
+                Compute_Nodes_A["~600 GPU Compute Nodes (Zone A)"]
+                Spine_A --- Leaf_A
+                Leaf_A --- Compute_Nodes_A
+            end
+
+            subgraph Zone_B ["Zone B"]
+                direction TB
+                Spine_B["Spine Switches (Zone B)"]
+                Leaf_B["Leaf Switches (Zone B)"]
+                Compute_Nodes_B["~600 GPU Compute Nodes (Zone B)"]
+                Spine_B --- Leaf_B
+                Leaf_B --- Compute_Nodes_B
+            end
+
+            InterZone_Links["Limited Inter-Zone Links"]
+            Spine_A --- InterZone_Links
+            InterZone_Links --- Spine_B
+        end
+
+        subgraph Shared_Storage_System ["Shared Storage System (3FS)"]
+            Storage_Nodes["~200 Storage Nodes"]
+        end
+
+        %% Connections
+        Leaf_A --- Storage_Nodes
+        Leaf_B --- Storage_Nodes
+
+        %% Conceptual Management
+        HAI_Platform -.-> Compute_Nodes_A
+        HAI_Platform -.-> Compute_Nodes_B
+        HAI_Platform -.-> Storage_Nodes
+        HAI_Platform -.-> Network_Fabric
+    end
+
+    classDef compute fill:#cce5ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef storage fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#065f46;
+    classDef network fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#92400e;
+    classDef management fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;
+
+    class Compute_Nodes_A,Compute_Nodes_B compute;
+    class Storage_Nodes storage;
+    class Spine_A,Leaf_A,Spine_B,Leaf_B,InterZone_Links network;
+    class HAI_Platform management;
+                    </pre>
+                </div>
+                <p class="mt-4 text-sm text-slate-600">This diagram visualizes the two-zone network fabric, shared storage, compute node clusters, and the overarching HAI platform for management and orchestration.</p>
+            </div>
+        </section>
+
+        <section id="detailed-diagram" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Detailed Infrastructure View</h2>
+                <p class="mb-4 text-lg">This diagram offers a more granular look at the Fire-Flyer 2 architecture, detailing representative GPU Compute Nodes, 3FS Storage Nodes, and their connections within the two-zone network fabric. Use scrollbars if needed to view the entire diagram.</p>
+                <div class="mermaid-container p-4 border border-slate-300 rounded-lg">
+                    <pre class="mermaid">
+%%{init: { "theme": "base", "fontFamily": "Inter, sans-serif", "fontSize": "44px", "themeVariables": { "primaryColor": "#cce5ff", "primaryTextColor": "#1e3a8a", "primaryBorderColor": "#3b82f6", "lineColor": "#60a5fa", "secondaryColor": "#d1fae5", "secondaryTextColor": "#065f46", "secondaryBorderColor": "#10b981", "tertiaryColor": "#fef3c7", "tertiaryTextColor": "#92400e", "tertiaryBorderColor": "#f59e0b", "mainBkg": "#ffffff", "textColor": "#334155", "nodeBorder": "#6b7280", "labelTextColor": "#4b5563" } } }%%
+graph TD
+    subgraph Fire_Flyer_2_Detailed_Infrastructure ["Fire-Flyer 2 Detailed Infrastructure"]
+        %% Management
+        subgraph Management_Orchestration_Detailed ["Management & Orchestration"]
+            HAI_Platform_Detailed["HAI Platform (Cluster-wide)"]
+        end
+
+        %% Network Zone A
+        subgraph Network_Zone_A_Detailed ["Network Zone A"]
+            direction TB
+            Spine_A_Switches["Zone A Spine Switches (20x QM8700)"]
+            Leaf_A_Switches["Zone A Leaf Switches (40x QM8700)"]
+            Spine_A_Switches --- Leaf_A_Switches
+
+            subgraph Compute_Nodes_Cluster_A ["GPU Compute Nodes (Zone A, ~600 Total)"]
+                direction LR
+                CN_A1["Compute Node A1"]
+                CN_A2["Compute Node A2"]
+                CN_Adots["..."]
+                CN_A_N["Compute Node AN"]
+            end
+            Leaf_A_Switches -. "Connects to" .-> CN_A1
+            Leaf_A_Switches -. "Connects to" .-> CN_A2
+            Leaf_A_Switches -. "Connects to" .-> CN_A_N
+
+            subgraph CN_A1_Internals ["Compute Node A1 Internals (8x A100 PCIe)"]
+                direction TB
+                subgraph CN_A1_CPU_Complex ["Dual AMD EPYC CPUs"]
+                    CN_A1_CPU0["CPU0"] --- CN_A1_Mem0["512GB RAM (total)"]
+                    CN_A1_CPU1["CPU1"] --- CN_A1_Mem0
+                end
+                subgraph CN_A1_GPUs ["8x NVIDIA A100 GPUs"]
+                    CN_A1_GPU0["GPU0"] -- "PCIe" --> CN_A1_CPU0
+                    CN_A1_GPU1["GPU1"] -- "PCIe" --> CN_A1_CPU0
+                    CN_A1_GPU2["GPU2"] -- "PCIe" --> CN_A1_CPU0
+                    CN_A1_GPU3["GPU3"] -- "PCIe" --> CN_A1_CPU0
+                    CN_A1_GPU4["GPU4"] -- "PCIe" --> CN_A1_CPU1
+                    CN_A1_GPU5["GPU5"] -- "PCIe (Shared Root)" --> CN_A1_CPU1
+                    CN_A1_GPU6["GPU6"] -- "PCIe (Shared Root)" --> CN_A1_CPU1
+                    CN_A1_GPU7["GPU7"] -- "PCIe" --> CN_A1_CPU1
+                end
+                subgraph CN_A1_NVLinks ["NVLink Bridges (600GB/s pairs)"]
+                    CN_A1_GPU0 --- CN_A1_NVL01["NVL"] --- CN_A1_GPU1
+                    CN_A1_GPU2 --- CN_A1_NVL23["NVL"] --- CN_A1_GPU3
+                    CN_A1_GPU4 --- CN_A1_NVL45["NVL"] --- CN_A1_GPU5
+                    CN_A1_GPU6 --- CN_A1_NVL67["NVL"] --- CN_A1_GPU7
+                end
+                CN_A1_NIC["1x IB NIC (200Gbps)"] -- "PCIe" --> CN_A1_CPU1
+            end
+            CN_A1 --- CN_A1_Internals
+        end
+
+        %% Network Zone B
+        subgraph Network_Zone_B_Detailed ["Network Zone B"]
+            direction TB
+            Spine_B_Switches["Zone B Spine Switches (20x QM8700)"]
+            Leaf_B_Switches["Zone B Leaf Switches (40x QM8700)"]
+            Spine_B_Switches --- Leaf_B_Switches
+
+            subgraph Compute_Nodes_Cluster_B ["GPU Compute Nodes (Zone B, ~600 Total)"]
+                direction LR
+                CN_B1["Compute Node B1"]
+                CN_Bdots["..."]
+                CN_B_N["Compute Node BN"]
+            end
+            Leaf_B_Switches -. "Connects to" .-> CN_B1
+            Leaf_B_Switches -. "Connects to" .-> CN_B_N
+        end
+
+        %% Inter-Zone Links
+        InterZone_Links_Detailed["Limited Inter-Zone Links (SpineA to SpineB)"]
+        Spine_A_Switches --- InterZone_Links_Detailed --- Spine_B_Switches
+
+        %% Shared 3FS Storage System
+        subgraph Shared_3FS_Storage ["3FS Distributed File System (~200 Storage Nodes Total)"]
+            direction LR
+            FS_Node1["Storage Node 1"]
+            FS_Node2["Storage Node 2"]
+            FS_Nodedots["..."]
+            FS_Node_M["Storage Node M"]
+        end
+
+        subgraph FS_Node1_Internals ["Storage Node 1 Internals"]
+            direction TB
+            FSN1_CPU["AMD EPYC CPU"] --- FSN1_Mem["512GB RAM"]
+            FSN1_CPU --- FSN1_SSDs["16x NVMe SSDs (15.36TB each)"]
+            FSN1_NIC_A["IB NIC (to Zone A Leaf)"] -- "PCIe" --> FSN1_CPU
+            FSN1_NIC_B["IB NIC (to Zone B Leaf)"] -- "PCIe" --> FSN1_CPU
+        end
+        FS_Node1 --- FS_Node1_Internals
+
+        %% Connections from Storage to Network Zones (SIMPLIFIED)
+        Leaf_A_Switches -. "Connects to FS_Node1 NIC A" .-> FS_Node1
+        Leaf_B_Switches -. "Connects to FS_Node1 NIC B" .-> FS_Node1
+        
+        Leaf_A_Switches -. "Connects to FS_Node2 (NIC A)" .-> FS_Node2
+        Leaf_B_Switches -. "Connects to FS_Node2 (NIC B)" .-> FS_Node2
+        Leaf_A_Switches -. "Connects to FS_Node_M (NIC A)" .-> FS_Node_M
+        Leaf_B_Switches -. "Connects to FS_Node_M (NIC B)" .-> FS_Node_M
+
+
+        %% Conceptual Management Links (Simplified)
+        HAI_Platform_Detailed -. "Orchestrates" .-> Compute_Nodes_Cluster_A
+        HAI_Platform_Detailed -. "Orchestrates" .-> Compute_Nodes_Cluster_B
+        HAI_Platform_Detailed -. "Manages" .-> Shared_3FS_Storage
+        HAI_Platform_Detailed -. "Monitors/Controls" .-> Network_Zone_A_Detailed
+        HAI_Platform_Detailed -. "Monitors/Controls" .-> Network_Zone_B_Detailed
+    end
+
+    %% Class Definitions for styling
+    classDef computeNode fill:#cce5ff,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a;
+    classDef storageNode fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#065f46;
+    classDef networkSwitch fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#92400e;
+    classDef managementPlatform fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;
+    classDef componentInternal fill:#e0e7ff,stroke:#6366f1,stroke-width:1px,color:#3730a3,font-size:10px;
+    classDef gpuInternal fill:#ccfbf1,stroke:#0d9488,stroke-width:1px,color:#115e59,font-size:10px;
+    classDef nvlinkInternal fill:#fef9c3,stroke:#eab308,stroke-width:1px,color:#854d0e,font-size:10px;
+
+    class CN_A1,CN_A2,CN_Adots,CN_A_N,CN_B1,CN_Bdots,CN_B_N computeNode;
+    class FS_Node1,FS_Node2,FS_Nodedots,FS_Node_M storageNode;
+    class Spine_A_Switches,Leaf_A_Switches,Spine_B_Switches,Leaf_B_Switches,InterZone_Links_Detailed networkSwitch;
+    class HAI_Platform_Detailed managementPlatform;
+
+    class CN_A1_CPU_Complex,CN_A1_GPUs,CN_A1_NVLinks,CN_A1_NIC,FSN1_CPU,FSN1_Mem,FSN1_SSDs,FSN1_NIC_A,FSN1_NIC_B componentInternal;
+    class CN_A1_GPU0,CN_A1_GPU1,CN_A1_GPU2,CN_A1_GPU3,CN_A1_GPU4,CN_A1_GPU5,CN_A1_GPU6,CN_A1_GPU7 gpuInternal;
+    class CN_A1_NVL01,CN_A1_NVL23,CN_A1_NVL45,CN_A1_NVL67 nvlinkInternal;
+                    </pre>
+                </div>
+                <p class="mt-4 text-sm text-slate-600">This diagram illustrates representative compute and storage nodes, their internal components (CPUs, GPUs, NVLink, SSDs, NICs), and their connections to the respective leaf/spine switches in each network zone. The dual-homed nature of storage nodes (connecting to both Zone A and Zone B) is also depicted.</p>
+            </div>
+        </section>
+
+        <section id="hardware" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Hardware Architecture Deep Dive</h2>
+                <p class="mb-8 text-lg">The Fire-Flyer's hardware is carefully selected and configured to balance performance, cost, and energy efficiency. This section explores the core components: compute nodes, storage nodes, and the network fabric. Click on diagram components to learn more.</p>
+
+                <div class="mb-12">
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-4">GPU Compute Nodes</h3>
+                    <p class="mb-4">These nodes are the computational backbone, housing eight NVIDIA A100 PCIe GPUs each. The design prioritizes direct PCIe connectivity and incorporates NVLink for enhanced inter-GPU communication, crucial for LLMs.</p>
+                    <div class="flex flex-col lg:flex-row gap-6 items-start">
+                        <div class="lg:w-2/3 border border-slate-300 rounded-lg p-4 bg-slate-50">
+                            <p class="text-center font-medium mb-2 text-slate-700">Fire-Flyer 2 Compute Node (Conceptual Diagram)</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="border border-dashed border-slate-400 p-2 rounded">
+                                    <div id="comp-cpu0" class="diagram-component bg-amber-200 p-2 rounded mb-1 text-center text-sm font-medium text-amber-800">CPU 0 (AMD EPYC)</div>
+                                    <div class="diagram-component bg-sky-200 p-1 rounded mb-1 text-center text-xs text-sky-800">Memory (256GB DDR4)</div>
+                                    <div class="grid grid-cols-2 gap-1">
+                                        <div id="comp-gpu0" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 0</div>
+                                        <div id="comp-gpu1" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 1</div>
+                                        <div id="comp-gpu2" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 2</div>
+                                        <div id="comp-gpu3" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 3</div>
+                                    </div>
+                                    <div id="comp-nvl01" class="diagram-component bg-purple-200 mt-1 p-1 rounded text-center text-xs text-purple-800">NVLink (0-1)</div>
+                                    <div id="comp-nvl23" class="diagram-component bg-purple-200 mt-1 p-1 rounded text-center text-xs text-purple-800">NVLink (2-3)</div>
+                                </div>
+                                <div class="border border-dashed border-slate-400 p-2 rounded">
+                                    <div id="comp-cpu1" class="diagram-component bg-amber-200 p-2 rounded mb-1 text-center text-sm font-medium text-amber-800">CPU 1 (AMD EPYC)</div>
+                                    <div class="diagram-component bg-sky-200 p-1 rounded mb-1 text-center text-xs text-sky-800">Memory (256GB DDR4)</div>
+                                    <div class="grid grid-cols-2 gap-1">
+                                        <div id="comp-gpu4" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 4</div>
+                                        <div id="comp-gpu5" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800 has-tooltip">GPU 5* <span class="tooltip">Shares PCIe root with GPU6</span></div>
+                                        <div id="comp-gpu6" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800 has-tooltip">GPU 6* <span class="tooltip">Shares PCIe root with GPU5</span></div>
+                                        <div id="comp-gpu7" class="diagram-component bg-green-200 p-2 rounded text-center text-xs text-green-800">GPU 7</div>
+                                    </div>
+                                     <div id="comp-nvl45" class="diagram-component bg-purple-200 mt-1 p-1 rounded text-center text-xs text-purple-800">NVLink (4-5)</div>
+                                     <div id="comp-nvl67" class="diagram-component bg-purple-200 mt-1 p-1 rounded text-center text-xs text-purple-800">NVLink (6-7)</div>
+                                </div>
+                            </div>
+                            <div id="comp-nic" class="diagram-component bg-red-200 p-2 mt-2 rounded text-center text-sm font-medium text-red-800">1x IB NIC (200Gbps)</div>
+                            <p class="text-xs text-slate-600 mt-2 text-center">*GPUs 5 & 6 share a PCIe root port. All GPUs connect via PCIe 4.0.</p>
+                        </div>
+                        <div id="compute-node-details" class="lg:w-1/3 p-4 bg-sky-50 rounded-lg min-h-[200px]">
+                            <h4 class="font-semibold text-sky-700 mb-2">Component Details</h4>
+                            <p class="text-sm text-slate-600">Click on a component in the diagram to see its specifications and role.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-12">
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-4">Storage Nodes (3FS)</h3>
+                    <p class="mb-4">Around 180-200 dedicated storage nodes form the backbone of the 3FS distributed file system. Each node is optimized for high I/O with dense NVMe SSDs and dual network connectivity for redundancy and shared access across network zones.</p>
+                     <div class="flex flex-col lg:flex-row gap-6 items-start">
+                        <div class="lg:w-2/3 border border-slate-300 rounded-lg p-4 bg-slate-50">
+                            <p class="text-center font-medium mb-2 text-slate-700">3FS Storage Node (Conceptual Diagram)</p>
+                            <div class="flex flex-col items-center">
+                                <div id="stor-cpu" class="diagram-component bg-amber-200 p-2 rounded mb-2 text-center text-sm font-medium text-amber-800 w-1/2">CPU (AMD EPYC 64-core)</div>
+                                <div class="diagram-component bg-sky-200 p-2 rounded mb-2 text-center text-sm text-sky-800 w-1/2">Memory (512GB DDR4)</div>
+                                <div id="stor-ssds" class="diagram-component bg-teal-200 p-3 rounded mb-2 text-center text-sm font-medium text-teal-800 w-full">
+                                    16 x NVMe SSDs (15.36TB each)
+                                    <div class="grid grid-cols-8 gap-1 mt-2">
+                                        <span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span>
+                                        <span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span><span class="bg-teal-300 h-4 rounded-sm"></span>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 w-full">
+                                    <div id="stor-nic-a" class="diagram-component bg-red-200 p-2 rounded text-center text-sm font-medium text-red-800 flex-1">IB NIC (to Zone A)</div>
+                                    <div id="stor-nic-b" class="diagram-component bg-red-200 p-2 rounded text-center text-sm font-medium text-red-800 flex-1">IB NIC (to Zone B)</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="storage-node-details" class="lg:w-1/3 p-4 bg-emerald-50 rounded-lg min-h-[200px]">
+                            <h4 class="font-semibold text-emerald-700 mb-2">Component Details</h4>
+                            <p class="text-sm text-slate-600">Click on a component in the diagram to see its specifications and role.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-4">Network Fabric</h3>
+                    <p class="mb-4">A cost-effective two-zone, two-layer InfiniBand Fat-Tree topology connects all compute and storage nodes. Each zone supports ~800 access ports, with limited links interconnecting the zones. This design significantly reduces switch count and cost compared to a monolithic three-layer Fat-Tree.</p>
+                    <div class="flex flex-col lg:flex-row gap-6 items-start">
+                        <div class="lg:w-2/3 border border-slate-300 rounded-lg p-4 bg-slate-50">
+                             <p class="text-center font-medium mb-2 text-slate-700">Two-Zone Fat-Tree Network (Conceptual)</p>
+                             <div class="flex justify-around items-start">
+                                <div class="w-2/5 border border-dashed border-blue-400 p-3 rounded bg-blue-50">
+                                    <h5 id="net-zonea" class="diagram-component text-center font-semibold text-blue-700 mb-2">Zone A</h5>
+                                    <div id="net-spinea" class="diagram-component bg-blue-200 p-2 rounded mb-2 text-center text-xs text-blue-800">20x Spine Switches</div>
+                                    <div class="text-center my-1">↕️</div>
+                                    <div id="net-leafa" class="diagram-component bg-blue-300 p-2 rounded mb-2 text-center text-xs text-blue-800">40x Leaf Switches</div>
+                                    <div class="text-center my-1">↕️</div>
+                                    <div class="bg-blue-100 p-1 rounded text-center text-xs text-blue-700">~600 Compute Nodes + Storage Node NICs</div>
+                                </div>
+                                <div class="w-1/6 flex flex-col items-center justify-center pt-10">
+                                    <div id="net-interzone" class="diagram-component bg-gray-200 p-2 rounded text-center text-xs text-gray-800 whitespace-nowrap">Limited Inter-Zone Links</div>
+                                    <div class="h-8 border-l-2 border-gray-400 my-1"></div>
+                                </div>
+                                <div class="w-2/5 border border-dashed border-green-400 p-3 rounded bg-green-50">
+                                    <h5 id="net-zoneb" class="diagram-component text-center font-semibold text-green-700 mb-2">Zone B</h5>
+                                    <div id="net-spineb" class="diagram-component bg-green-200 p-2 rounded mb-2 text-center text-xs text-green-800">20x Spine Switches</div>
+                                    <div class="text-center my-1">↕️</div>
+                                    <div id="net-leafb" class="diagram-component bg-green-300 p-2 rounded mb-2 text-center text-xs text-green-800">40x Leaf Switches</div>
+                                     <div class="text-center my-1">↕️</div>
+                                    <div class="bg-green-100 p-1 rounded text-center text-xs text-green-700">~600 Compute Nodes + Storage Node NICs</div>
+                                </div>
+                             </div>
+                             <p class="text-xs text-slate-600 mt-2 text-center">All switches are Mellanox QM8700 (40-port 200Gbps IB). Total ~122 switches.</p>
+                        </div>
+                        <div id="network-details" class="lg:w-1/3 p-4 bg-indigo-50 rounded-lg min-h-[200px]">
+                            <h4 class="font-semibold text-indigo-700 mb-2">Component Details</h4>
+                            <p class="text-sm text-slate-600">Click on a component in the diagram to see its specifications and role.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="software" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Software Co-Design Ecosystem</h2>
+                <p class="mb-8 text-lg">The Fire-Flyer's performance and cost-effectiveness are critically dependent on its sophisticated software stack. Custom-developed solutions work in tandem with the hardware to overcome limitations and maximize efficiency. This section highlights the key software components.</p>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">🤖 HAI-Platform</h3>
+                        <p class="mb-3">The overarching cluster management and job scheduling system. Key roles include:</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm mb-3">
+                            <li>Time-sharing scheduling for multiple users/tasks.</li>
+                            <li>Resource classification and allocation (node-based).</li>
+                            <li>Fault detection (Validator utility) and automated recovery.</li>
+                            <li>Checkpoint management (leveraging 3FS) for preemptible jobs.</li>
+                            <li>Strategic scheduling to manage the two-zone network, limiting concurrent cross-zone tasks to prevent bottlenecks.</li>
+                        </ul>
+                        <div class="border border-dashed border-sky-300 p-3 rounded mt-2">
+                            <p class="text-sm text-center text-sky-600">Conceptual: HAI-Platform orchestrates Compute Nodes, Storage Nodes, and Network, ensuring efficient job execution and resource utilization across the entire cluster.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold text-emerald-700 mb-3">🚀 HFReduce</h3>
+                        <p class="mb-3">A custom allreduce communication library optimized for Fire-Flyer's PCIe A100 GPU architecture. It addresses PCIe P2P bottlenecks on EPYC Rome CPUs by:</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm mb-3">
+                            <li>Employing a CPU-centric reduction strategy.</li>
+                            <li>Using efficient D2H/H2D transfers (MemCpyAsync/GDRCopy).</li>
+                            <li>Leveraging RDMA over InfiniBand with a Double Binary Tree algorithm for inter-node communication.</li>
+                            <li>Bypassing GPU kernel execution for reduction, saving GPU resources.</li>
+                        </ul>
+                        <div class="border border-dashed border-emerald-300 p-3 rounded mt-2">
+                            <p class="text-sm text-emerald-600"><strong>Data Flow (Simplified):</strong><br>
+                            1. GPUs → D2H → CPU Host Memory<br>
+                            2. CPU performs vector reduction on data in Host Memory<br>
+                            3. Reduced data → RDMA via IB NIC → Other Nodes (Network)<br>
+                            4. Globally reduced data from Network → IB NIC → CPU Host Memory<br>
+                            5. CPU Host Memory → H2D → GPUs</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold text-indigo-700 mb-3">⚖️ HaiScale</h3>
+                        <p class="mb-3">A distributed training optimization framework providing various parallelism strategies tailored for Fire-Flyer:</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm mb-3">
+                            <li><strong>Data Parallelism (DP):</strong> Uses HFReduce as the backend.</li>
+                            <li><strong>Tensor Parallelism (TP):</strong> Leverages NVLink bridges for high inter-GPU bandwidth within a node.</li>
+                            <li><strong>Pipeline Parallelism (PP):</strong> Optimizes for the single IB NIC per compute node by staggering PP stages for different DP ranks, preventing NIC overload.</li>
+                            <li><strong>Fully Sharded Data Parallel (FSDP):</strong> Includes memory management optimizations and improved communication/computation overlap.</li>
+                        </ul>
+                         <div class="border border-dashed border-indigo-300 p-3 rounded mt-2">
+                            <p class="text-sm text-center text-indigo-600">Conceptual: HaiScale intelligently combines DP, TP, and PP, considering hardware specifics like NVLink and single NIC, to train large models efficiently.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold text-amber-700 mb-3">🗄️ 3FS (File System)</h3>
+                        <p class="mb-3">An in-house high-performance distributed file system built on the dedicated storage nodes. Key features:</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm mb-3">
+                            <li>Clients run on compute nodes, accessing data over the IB network.</li>
+                            <li>Metadata Service: Distributed key-value store for file/directory info.</li>
+                            <li>Storage Service: Manages data chunks on NVMe SSDs using Chain Replication with Apportioned Queries (CRAQ) for strong consistency and high throughput.</li>
+                            <li>Congestion Control: Implements a request-to-send mechanism to prevent client-side incast from many storage servers. Uses InfiniBand Service Levels (SL) for QoS.</li>
+                        </ul>
+                        <div class="border border-dashed border-amber-300 p-3 rounded mt-2">
+                             <p class="text-sm text-amber-600"><strong>Client-Server Interaction (Simplified):</strong><br>
+                            1. Compute Node App → 3FS Client: I/O Request<br>
+                            2. 3FS Client → IB NIC → Network → Storage Node IB NIC<br>
+                            3. Storage Node: Metadata/Storage Service processes request (reads/writes SSDs)<br>
+                            4. Storage Node (with request-to-send) → Network → Compute Node: Data Transfer</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="performance" class="content-section pt-16 -mt-16 mb-12">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Performance Insights & Comparisons</h2>
+                <p class="mb-8 text-lg">The Fire-Flyer AI-HPC demonstrates compelling performance, especially considering its cost and energy advantages. This section visualizes key metrics and comparisons based on the report's findings.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">Cost Efficiency</h3>
+                        <p class="text-sm text-center mb-3 text-slate-600">Relative construction cost compared to NVIDIA DGX-A100 baseline.</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="costChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">Energy Efficiency</h3>
+                        <p class="text-sm text-center mb-3 text-slate-600">Relative energy consumption compared to NVIDIA DGX-A100 baseline.</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="energyChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">GPU Compute Performance</h3>
+                        <p class="text-sm text-center mb-3 text-slate-600">A100 PCIe (Fire-Flyer) vs. A100 SXM (DGX) TF32/FP16 GEMM.</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="gpuPerfChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">HFReduce Allreduce Speedup</h3>
+                        <p class="text-sm text-center mb-3 text-slate-600">Relative speedup of HFReduce over NCCL for GPT-3 13B (representative).</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="hfReduceChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">3FS I/O Throughput</h3>
+                         <p class="text-sm text-center mb-3 text-slate-600">Aggregate read/write throughput (representative block size).</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="storagePerfChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-slate-800 mb-3 text-center">LLM Training Performance</h3>
+                        <p class="text-sm text-center mb-3 text-slate-600">Relative training throughput for GPT-3 175B (Fire-Flyer vs. DGX-A100).</p>
+                        <div class="chart-container bg-slate-50 p-4 rounded-lg shadow">
+                            <canvas id="llmTrainChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="content-section pt-16 -mt-16">
+            <div class="bg-white p-6 sm:p-8 rounded-lg shadow-lg">
+                <h2 class="text-3xl font-bold text-slate-900 mb-6">Design Principles & Conclusion</h2>
+                <p class="mb-4 text-lg">The Fire-Flyer AI-HPC project compellingly demonstrates that high-performance AI supercomputing can be achieved with significantly reduced costs and energy consumption through intelligent design choices and deep software-hardware co-optimization.</p>
+                <h3 class="text-xl font-semibold text-slate-800 mb-3">Key Design Principles Recapped:</h3>
+                <ul class="list-disc list-inside mb-4 space-y-2">
+                    <li><strong class="text-sky-600">Cost-Effectiveness:</strong> Prioritizing hardware like PCIe A100 GPUs and a two-zone network to lower capital expenditure.</li>
+                    <li><strong class="text-sky-600">Software-Hardware Co-Design:</strong> Developing custom software (HFReduce, HaiScale, 3FS, HAI-Platform) to maximize performance from chosen hardware and mitigate its limitations.</li>
+                    <li><strong class="text-sky-600">Energy Efficiency:</strong> Achieving lower power consumption through hardware selection and optimized software.</li>
+                    <li><strong class="text-sky-600">Scalability and Adaptability:</strong> Designing a system capable of handling large-scale LLMs and adapting to evolving needs (e.g., adding NVLink).</li>
+                </ul>
+                <h3 class="text-xl font-semibold text-slate-800 mb-3">Primary Trade-offs:</h3>
+                <p class="mb-4">The main trade-off is the significant investment in specialized software development and optimization to compensate for less expensive hardware choices. While this yields a highly cost-performant system, its peak performance is closely tied to this custom software stack.</p>
+                <h3 class="text-xl font-semibold text-slate-800 mb-3">Implications and Future Directions:</h3>
+                <p class="mb-4">Fire-Flyer provides a valuable blueprint for organizations seeking large-scale AI capabilities under budget or power constraints. It highlights the power of innovative software engineering. The paper also points towards future needs, such as multi-NIC compute nodes and multi-plane networks for next-generation MoE LLMs, suggesting an ongoing evolution in cost-effective AI-HPC design.</p>
+                <p class="mt-6 text-sm text-slate-500">For full details, please refer to the research paper: "Fire-Flyer AI-HPC: A Cost-Effective Software-Hardware Co-Design for Deep Learning" (arXiv:2408.14158).</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="text-center p-6 text-sm text-slate-500">
+        Interactive Explorer for the Fire-Flyer AI-HPC Report.
+    </footer>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        mermaid.initialize({ 
+            startOnLoad: false // We call run() manually after DOM is ready
+            // Global theme/font settings are now best handled by %%init%% in each diagram block
+            // to ensure they are applied correctly, especially for font sizes.
+        });
+        
+        function renderMermaidDiagrams() {
+            try {
+                const mermaidBlocks = document.querySelectorAll('pre.mermaid');
+                mermaidBlocks.forEach((block, index) => {
+                    const existingSvg = block.parentNode.querySelector('svg');
+                    if (existingSvg) {
+                        existingSvg.remove(); // Remove old SVG if re-rendering
+                    }
+                    if (!block.id) { // Ensure block has an ID for Mermaid if needed
+                        block.id = `mermaid-diagram-${index}`;
+                    }
+                });
+                mermaid.run(); // Render all diagrams with class="mermaid"
+            } catch (e) {
+                console.error("Mermaid rendering error:", e);
+                const mermaidContainers = document.querySelectorAll('.mermaid-container');
+                mermaidContainers.forEach(container => {
+                    let errorNode = container.querySelector('.mermaid-error-display');
+                    if (!errorNode) {
+                        errorNode = document.createElement('div');
+                        errorNode.className = 'mermaid-error-display text-red-600 p-4 bg-red-100 border border-red-400 rounded';
+                        // Insert error message before the pre tag if possible, or append to container
+                        const preTag = container.querySelector('pre.mermaid');
+                        if (preTag) {
+                            container.insertBefore(errorNode, preTag);
+                        } else {
+                            container.appendChild(errorNode);
+                        }
+                    }
+                    errorNode.textContent = 'Error rendering diagram. Please check console for details. The diagram code might have syntax issues.';
+                });
+            }
+        }
+        renderMermaidDiagrams(); // Initial render
+
+
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        if (mobileMenuButton && mobileMenu) {
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+            });
+        }
+
+        const navLinks = document.querySelectorAll('.nav-link');
+        navLinks.forEach(link => {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    const headerOffset = document.querySelector('header').offsetHeight;
+                    const elementPosition = targetElement.getBoundingClientRect().top;
+                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+                    window.scrollTo({
+                        top: offsetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+                if (mobileMenu && !mobileMenu.classList.contains('hidden')) {
+                    mobileMenu.classList.add('hidden');
+                }
+            });
+        });
+
+        const sections = document.querySelectorAll('.content-section');
+        window.addEventListener('scroll', () => {
+            let current = 'overview'; 
+            const headerHeight = document.querySelector('header').offsetHeight;
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - headerHeight - 50;
+                if (pageYOffset >= sectionTop) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').substring(1) === current) {
+                    link.classList.add('active');
+                }
+            });
+            if (window.pageYOffset < sections[0].offsetTop - headerHeight - 50) {
+                 navLinks.forEach(link => link.classList.remove('active'));
+                const firstNavLink = document.querySelector('.nav-link[href="#overview"]');
+                if (firstNavLink) firstNavLink.classList.add('active');
+            }
+        });
+        
+        // Set initial active link on page load
+        function setInitialActiveLink() {
+            let currentId = 'overview';
+            const headerHeight = document.querySelector('header').offsetHeight;
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - headerHeight - 50;
+                if (window.pageYOffset >= sectionTop) {
+                    currentId = section.getAttribute('id');
+                }
+            });
+             navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').substring(1) === currentId) {
+                    link.classList.add('active');
+                }
+            });
+            // Ensure overview is active if at the very top
+            if (window.pageYOffset < sections[0].offsetTop - headerHeight - 50) {
+                 navLinks.forEach(link => link.classList.remove('active'));
+                const firstNavLink = document.querySelector('.nav-link[href="#overview"]');
+                if (firstNavLink) firstNavLink.classList.add('active');
+            }
+        }
+        setInitialActiveLink();
+
+
+        const computeNodeDetailsDiv = document.getElementById('compute-node-details');
+        const computeComponents = [
+            { id: 'comp-cpu0', name: 'CPU 0 (AMD EPYC Rome/Milan)', details: '32-core AMD EPYC Rome/Milan series. Provides general processing and PCIe connectivity for half the GPUs.' },
+            { id: 'comp-cpu1', name: 'CPU 1 (AMD EPYC Rome/Milan)', details: '32-core AMD EPYC Rome/Milan series. Provides general processing and PCIe connectivity for the other half of GPUs and the IB NIC.' },
+            { id: 'comp-gpu0', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu1', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu2', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu3', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu4', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu5', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu6', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-gpu7', name: 'GPU 0-7 (NVIDIA A100 PCIe)', details: 'NVIDIA A100 PCIe 40GB. Primary compute units. 8 per node. GPUs 5 & 6 share a PCIe root port. PCIe 4.0 x16 interface. Max PCIe bandwidth from a single Root Complex to CPU ~37.5GB/s.' },
+            { id: 'comp-nvl01', name: 'NVLink Bridges', details: 'Provide 600 GB/s high-bandwidth direct communication between paired GPUs (0-1, 2-3, 4-5, 6-7). Crucial for Tensor Parallelism in LLMs.' },
+            { id: 'comp-nvl23', name: 'NVLink Bridges', details: 'Provide 600 GB/s high-bandwidth direct communication between paired GPUs (0-1, 2-3, 4-5, 6-7). Crucial for Tensor Parallelism in LLMs.' },
+            { id: 'comp-nvl45', name: 'NVLink Bridges', details: 'Provide 600 GB/s high-bandwidth direct communication between paired GPUs (0-1, 2-3, 4-5, 6-7). Crucial for Tensor Parallelism in LLMs.' },
+            { id: 'comp-nvl67', name: 'NVLink Bridges', details: 'Provide 600 GB/s high-bandwidth direct communication between paired GPUs (0-1, 2-3, 4-5, 6-7). Crucial for Tensor Parallelism in LLMs.' },
+            { id: 'comp-nic', name: 'InfiniBand NIC', details: '1x Mellanox ConnectX-6, 200Gbps. Handles all off-node communication (compute and storage I/O). Connected to its own PCIe root complex.' }
+        ];
+        setupDiagramInteractivity(computeComponents, computeNodeDetailsDiv, 'compute');
+
+        const storageNodeDetailsDiv = document.getElementById('storage-node-details');
+        const storageComponents = [
+            { id: 'stor-cpu', name: 'CPU (AMD EPYC 7742)', details: 'Single 64-core AMD EPYC 7742 CPU. Manages I/O operations for SSDs and network traffic.' },
+            { id: 'stor-ssds', name: 'NVMe SSD Array', details: '16 x 15.36TB PCIe 4.0x4 NVMe SSDs. Provides over 245TB raw capacity per node. Delivers high IOPS and throughput for 3FS.' },
+            { id: 'stor-nic-a', name: 'InfiniBand NIC (Zone A)', details: '1x Mellanox ConnectX-6, 200Gbps. Connects to Zone A network fabric.' },
+            { id: 'stor-nic-b', name: 'InfiniBand NIC (Zone B)', details: '1x Mellanox ConnectX-6, 200Gbps. Connects to Zone B network fabric. Dual NICs provide shared access and redundancy.' }
+        ];
+        setupDiagramInteractivity(storageComponents, storageNodeDetailsDiv, 'storage');
+
+        const networkDetailsDiv = document.getElementById('network-details');
+        const networkComponents = [
+            { id: 'net-zonea', name: 'Network Zone A', details: 'An 800-port, two-layer InfiniBand Fat-Tree. Connects ~600 compute nodes and one NIC of each storage node.' },
+            { id: 'net-zoneb', name: 'Network Zone B', details: 'An 800-port, two-layer InfiniBand Fat-Tree. Connects ~600 compute nodes and one NIC of each storage node.' },
+            { id: 'net-spinea', name: 'Spine Switches (Zone A)', details: '20x Mellanox QM8700 (40-port 200Gbps IB) switches form the spine layer of Zone A.' },
+            { id: 'net-spineb', name: 'Spine Switches (Zone B)', details: '20x Mellanox QM8700 (40-port 200Gbps IB) switches form the spine layer of Zone B.' },
+            { id: 'net-leafa', name: 'Leaf Switches (Zone A)', details: '40x Mellanox QM8700 (40-port 200Gbps IB) switches form the leaf layer of Zone A, connecting to end nodes.' },
+            { id: 'net-leafb', name: 'Leaf Switches (Zone B)', details: '40x Mellanox QM8700 (40-port 200Gbps IB) switches form the leaf layer of Zone B, connecting to end nodes.' },
+            { id: 'net-interzone', name: 'Inter-Zone Links', details: 'Limited number of 200Gbps links connecting spine switches of Zone A and Zone B. Cross-zone traffic managed by HAI-Platform.' }
+        ];
+        setupDiagramInteractivity(networkComponents, networkDetailsDiv, 'network');
+
+
+        function setupDiagramInteractivity(components, detailsDiv, prefix) {
+            let currentSelected = null;
+            components.forEach(comp => {
+                const el = document.getElementById(comp.id);
+                if (el) {
+                    el.addEventListener('click', () => {
+                        if (currentSelected && currentSelected !== el) {
+                            currentSelected.classList.remove('selected');
+                        }
+                        if (el.classList.contains('selected')) {
+                            el.classList.remove('selected');
+                            detailsDiv.innerHTML = `<h4 class="font-semibold text-${detailsDiv.classList.contains('bg-sky-50') ? 'sky' : detailsDiv.classList.contains('bg-emerald-50') ? 'emerald' : 'indigo'}-700 mb-2">Component Details</h4> <p class="text-sm text-slate-600">Click on a component in the diagram to see its specifications and role.</p>`;
+                            currentSelected = null;
+                        } else {
+                            el.classList.add('selected');
+                            currentSelected = el;
+                            detailsDiv.innerHTML = `
+                                <h4 class="font-semibold text-${detailsDiv.classList.contains('bg-sky-50') ? 'sky' : detailsDiv.classList.contains('bg-emerald-50') ? 'emerald' : 'indigo'}-700 mb-2">${comp.name}</h4>
+                                <p class="text-sm text-slate-600">${comp.details}</p>
+                            `;
+                        }
+                    });
+                }
+            });
+        }
+
+        const commonChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#475569' }, grid: { color: '#e2e8f0'} },
+                x: { ticks: { color: '#475569', maxRotation: 45, minRotation: 0, 
+                    callback: function(value, index, values) {
+                        const label = this.getLabelForValue(value);
+                        if (label.length > 16) {
+                            return label.match(/.{1,16}/g);
+                        }
+                        return label;
+                    }
+                }, grid: { display: false } }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    titleFont: { weight: 'bold' },
+                    bodyFont: { size: 12 },
+                    padding: 10,
+                    cornerRadius: 4,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y + (context.dataset.unit || '');
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+        
+        const chartColors = {
+            sky: 'rgb(56, 189, 248)',
+            emerald: 'rgb(52, 211, 153)',
+            indigo: 'rgb(129, 140, 248)',
+            slate: 'rgb(100, 116, 139)',
+            skyLight: 'rgba(56, 189, 248, 0.5)',
+            emeraldLight: 'rgba(52, 211, 153, 0.5)',
+        };
+
+        new Chart(document.getElementById('costChart'), {
+            type: 'bar',
+            data: {
+                labels: ['NVIDIA DGX-A100 (Baseline)', 'Fire-Flyer 2'],
+                datasets: [{
+                    label: 'Relative Cost',
+                    data: [100, 50],
+                    backgroundColor: [chartColors.slate, chartColors.sky],
+                    borderColor: [chartColors.slate, chartColors.sky],
+                    borderWidth: 1,
+                    unit: '%'
+                }]
+            },
+            options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+
+        new Chart(document.getElementById('energyChart'), {
+            type: 'bar',
+            data: {
+                labels: ['NVIDIA DGX-A100 (Baseline)', 'Fire-Flyer 2'],
+                datasets: [{
+                    label: 'Relative Energy Consumption',
+                    data: [100, 60],
+                    backgroundColor: [chartColors.slate, chartColors.emerald],
+                    borderColor: [chartColors.slate, chartColors.emerald],
+                    borderWidth: 1,
+                    unit: '%'
+                }]
+            },
+             options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+
+        new Chart(document.getElementById('gpuPerfChart'), {
+            type: 'bar',
+            data: {
+                labels: ['A100 SXM (DGX - Baseline)', 'A100 PCIe (Fire-Flyer)'],
+                datasets: [{
+                    label: 'Relative TF32/FP16 GEMM Perf.',
+                    data: [100, 83],
+                    backgroundColor: [chartColors.slate, chartColors.indigo],
+                    borderColor: [chartColors.slate, chartColors.indigo],
+                    borderWidth: 1,
+                    unit: '%'
+                }]
+            },
+            options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+        
+        new Chart(document.getElementById('hfReduceChart'), {
+            type: 'bar',
+            data: {
+                labels: ['NCCL (Baseline)', 'HFReduce'],
+                datasets: [{
+                    label: 'Relative Allreduce Speed (GPT-3 13B)',
+                    data: [100, 135],
+                    backgroundColor: [chartColors.slate, chartColors.sky],
+                    borderColor: [chartColors.slate, chartColors.sky],
+                    borderWidth: 1,
+                    unit: '%'
+                }]
+            },
+            options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+
+        new Chart(document.getElementById('storagePerfChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Read Throughput', 'Write Throughput'],
+                datasets: [{
+                    label: 'Throughput (TB/s)',
+                    data: [8.0, 3.5], 
+                    backgroundColor: [chartColors.emeraldLight, chartColors.skyLight],
+                    borderColor: [chartColors.emerald, chartColors.sky],
+                    borderWidth: 1,
+                    unit: ' TB/s'
+                }]
+            },
+            options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+
+        new Chart(document.getElementById('llmTrainChart'), {
+            type: 'bar',
+            data: {
+                labels: ['NVIDIA DGX-A100 (Baseline)', 'Fire-Flyer 2'],
+                datasets: [{
+                    label: 'Relative GPT-3 175B Training Throughput',
+                    data: [100, 75], 
+                    backgroundColor: [chartColors.slate, chartColors.indigo],
+                    borderColor: [chartColors.slate, chartColors.indigo],
+                    borderWidth: 1,
+                    unit: '%'
+                }]
+            },
+            options: {...commonChartOptions, plugins: {...commonChartOptions.plugins, legend: {display: true, labels: {color: '#475569'}}}}
+        });
+    });
+</script>
+</body>
+</html>

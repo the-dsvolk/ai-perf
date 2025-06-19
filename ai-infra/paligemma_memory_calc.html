@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paligemma GPU Memory Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Slate & Amber -->
+    <!-- Application Structure Plan: The application uses a responsive two-column layout. The left column contains all user-configurable controls (scenario, model, precision, etc.), allowing for intuitive parameter adjustment. The right column is dedicated to output, presenting the results in two forms: 1) a dynamic bar chart for a quick, high-level visual understanding of memory distribution, and 2) a detailed, itemized table that provides granular data and the exact calculation formulas. This structure separates input from output, creating a clear, task-oriented user flow where changes on the left are instantly reflected on the right. This is more usable than a linear layout as it allows users to see the impact of their choices immediately. -->
+    <!-- Visualization & Content Choices: 
+        Report Info: Memory usage for Paligemma models. Goal: Calculate and explain memory costs.
+        Viz/Presentation Method & Justification:
+        - Controls (HTML forms with Tailwind): Dropdowns and sliders are used for parameter selection as they are the standard, intuitive UI elements for this task.
+        - Summary (Chart.js Bar Chart): A bar chart provides an immediate visual representation of which components (weights, optimizer, etc.) are the primary memory consumers. This is more effective for at-a-glance understanding than a table alone.
+        - Details (HTML Table): A table is used to present the precise numerical results and the corresponding mathematical formulas from the source report, satisfying the need for detailed, verifiable information.
+        - Interaction: All controls trigger an immediate recalculation and re-rendering of both the chart and the table, providing a responsive, interactive experience.
+        - Library/Method: Chart.js for the canvas-based bar chart. All other elements are structured HTML styled with Tailwind CSS. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .custom-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #f59e0b;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #f59e0b;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .tab-btn.active {
+            border-color: #f59e0b;
+            color: #b45309;
+            background-color: #fff7ed;
+        }
+        .code-block {
+            background-color: #1f2937;
+            color: #d1d5db;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.875rem;
+        }
+        .code-block .comment { color: #6b7280; }
+        .code-block .keyword { color: #fb923c; }
+        .code-block .string { color: #a5b4fc; }
+        .code-block .number { color: #f87171; }
+        .code-block .class-name { color: #6ee7b7; }
+        .code-block .function { color: #818cf8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Paligemma GPU Memory Calculator</h1>
+            <p class="mt-2 text-slate-600 max-w-3xl mx-auto">An interactive tool to estimate the VRAM requirements for training and inference with Paligemma models.</p>
+        </header>
+
+        <div class="mb-8">
+            <div class="border-b border-slate-200">
+                <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+                    <button class="tab-btn active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="calculator">Calculator</button>
+                    <button class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300" data-tab="precision">Precision Guide</button>
+                    <button class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300" data-tab="concepts">Core Concepts</button>
+                    <button class="tab-btn whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-slate-500 hover:text-slate-700 hover:border-slate-300" data-tab="code">Training Code</button>
+                </nav>
+            </div>
+        </div>
+
+        <div id="calculatorContent" class="tab-content">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <aside class="lg:col-span-4 bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold mb-6 text-slate-900">Configuration</h2>
+                    <div class="space-y-6">
+                        <div>
+                            <label for="scenario" class="block text-sm font-medium text-slate-700">Scenario</label>
+                            <select id="scenario" class="custom-select mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md shadow-sm">
+                                <option value="training">Training / Fine-Tuning</option>
+                                <option value="inference">Inference</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="model" class="block text-sm font-medium text-slate-700">Model Size</label>
+                            <select id="model" class="custom-select mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md shadow-sm">
+                                <option value="3B" selected>Paligemma 3B</option>
+                                <option value="10B">Paligemma 10B</option>
+                                <option value="28B">Paligemma 28B</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="precision" class="block text-sm font-medium text-slate-700">Precision</label>
+                            <select id="precision" class="custom-select mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md shadow-sm">
+                                <option value="4">FP32 (4 bytes)</option>
+                                <option value="2" selected>BF16/FP16 (2 bytes)</option>
+                                <option value="1">FP8/INT8 (1 byte)</option>
+                                <option value="0.5">INT4 (0.5 bytes)</option>
+                            </select>
+                        </div>
+                        <div id="optimizer-group">
+                            <label for="optimizer" class="block text-sm font-medium text-slate-700">Optimizer</label>
+                            <select id="optimizer" class="custom-select mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md shadow-sm">
+                                <option value="8" selected>Adam / AdamW (8 bytes)</option>
+                                <option value="2">AdamW 8-bit (2 bytes)</option>
+                                <option value="4">Adafactor / SGD (4 bytes)</option>
+                                <option value="0">SGD Stateless (0 bytes)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="batchSize" class="block text-sm font-medium text-slate-700">Batch Size</label>
+                             <select id="batchSize" class="custom-select mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md shadow-sm">
+                                <option value="32" selected>32</option>
+                                <option value="64">64</option>
+                                <option value="128">128</option>
+                                <option value="256">256</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="seqLength" class="block text-sm font-medium text-slate-700">Sequence Length</label>
+                            <div class="flex items-center space-x-4 mt-1">
+                                <input type="range" id="seqLength" min="256" max="16384" step="256" value="512" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                                <span id="seqLengthValue" class="font-semibold text-amber-600 w-16 text-center">512</span>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+                <main class="lg:col-span-8 bg-white p-6 rounded-xl shadow-lg">
+                    <div id="results-intro" class="mb-6">
+                        <h2 class="text-xl font-bold text-slate-900 mb-2">Estimated Memory Usage</h2>
+                        <p class="text-sm text-slate-600">This section provides a visual and tabular breakdown of the VRAM required for your selected configuration. The bar chart offers a quick comparison of the memory consumed by each component, while the table details the precise calculations. Interact with the controls on the left to see how each parameter affects the total memory footprint.</p>
+                    </div>
+                    <div class="chart-container mb-8">
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-slate-200">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Component</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Memory (GB)</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Calculation</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calculationDetails" class="bg-white divide-y divide-slate-200"></tbody>
+                            <tfoot class="bg-slate-50">
+                                 <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-900">Total Estimated Memory</td>
+                                    <td id="totalMemory" class="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-900"></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">(Subtotal + 15% Overhead)</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <div id="hardware-guidance" class="mt-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
+                        <p class="text-sm text-amber-800"></p>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <div id="precisionContent" class="tab-content hidden bg-white p-6 md:p-8 rounded-xl shadow-lg">
+             <h2 class="text-2xl font-bold text-slate-900 mb-4">Precision Guide</h2>
+             <p class="mb-6 text-slate-600">Numerical precision determines the number of bytes used to store each parameter in the model. Lower precision reduces memory usage and can speed up computation, but may come with a trade-off in accuracy.</p>
+             <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Bytes per Parameter</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Typical Use Case</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Key Considerations</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-slate-200">
+                        <tr><td class="px-6 py-4 font-semibold">FP32</td><td class="px-6 py-4">4 bytes</td><td class="px-6 py-4">Baseline calculations</td><td class="px-6 py-4">Highest memory cost, but most numerically stable.</td></tr>
+                        <tr><td class="px-6 py-4 font-semibold">BF16</td><td class="px-6 py-4">2 bytes</td><td class="px-6 py-4">Standard for training LLMs</td><td class="px-6 py-4">Best balance of range and precision for stable training.</td></tr>
+                        <tr><td class="px-6 py-4 font-semibold">FP16</td><td class="px-6 py-4">2 bytes</td><td class="px-6 py-4">Training & Inference</td><td class="px-6 py-4">Can suffer from instability (underflow/overflow).</td></tr>
+                        <tr><td class="px-6 py-4 font-semibold">FP8</td><td class="px-6 py-4">1 byte</td><td class="px-6 py-4">Accelerated Training</td><td class="px-6 py-4">Requires modern hardware (e.g., H100).</td></tr>
+                        <tr><td class="px-6 py-4 font-semibold">INT8</td><td class="px-6 py-4">1 byte</td><td class="px-6 py-4">Inference (Quantization)</td><td class="px-6 py-4">4x memory reduction vs FP32. Small potential accuracy loss.</td></tr>
+                        <tr><td class="px-6 py-4 font-semibold">INT4</td><td class="px-6 py-4">0.5 bytes</td><td class="px-6 py-4">Inference (Quantization)</td><td class="px-6 py-4">8x memory reduction. Higher risk of accuracy degradation.</td></tr>
+                    </tbody>
+                </table>
+             </div>
+        </div>
+
+        <div id="conceptsContent" class="tab-content hidden bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-bold text-slate-900 mb-6">Core Memory Concepts</h2>
+
+            <div class="bg-slate-50 rounded-lg p-6 mb-8 border border-slate-200">
+                <h3 class="text-xl font-semibold text-slate-800 mb-4">Key Memory Formulas</h3>
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="font-semibold text-slate-700">Training Memory</h4>
+                        <p class="text-sm text-slate-600 mt-1">Memory = Weights + Gradients + Optimizer + Activations</p>
+                        <code class="block text-xs text-amber-800 bg-amber-50 p-2 rounded-md mt-2 break-all">(P * B_w) + (P_t * B_g) + (P_t * B_o) + (L*B*S*H_d*K*B_a)</code>
+                    </div>
+                     <div>
+                        <h4 class="font-semibold text-slate-700">Inference Memory</h4>
+                        <p class="text-sm text-slate-600 mt-1">Memory = Weights + KV Cache</p>
+                        <code class="block text-xs text-amber-800 bg-amber-50 p-2 rounded-md mt-2 break-all">(P * B_w) + (B*S*L*H_d*2*B_kv)</code>
+                    </div>
+                </div>
+                 <div class="mt-4 pt-4 border-t border-slate-200">
+                    <h4 class="font-semibold text-slate-700">Legend</h4>
+                    <ul class="text-sm text-slate-600 mt-2 space-y-1 list-disc list-inside">
+                        <li><code class="text-xs">P</code>: Total Parameters</li>
+                        <li><code class="text-xs">P_t</code>: Trainable Parameters</li>
+                        <li><code class="text-xs">B_w, B_g, B_o, B_a, B_kv</code>: Bytes per Weight, Gradient, Optimizer, Activation, KV Cache</li>
+                        <li><code class="text-xs">L</code>: Number of Layers</li>
+                        <li><code class="text-xs">B</code>: Batch Size</li>
+                        <li><code class="text-xs">S</code>: Sequence Length</li>
+                        <li><code class="text-xs">H_d</code>: Hidden Dimension Size</li>
+                        <li><code class="text-xs">K</code>: Activation Constant (K_act)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="space-y-8">
+                <div>
+                    <h3 class="text-xl font-semibold text-slate-800">Model Weights</h3>
+                    <p class="mt-2 text-slate-600">This is the memory needed to store the model's parameters—the learned numbers that encode its knowledge. It represents a <strong class="font-semibold">static, foundational memory cost</strong>. Once the model is loaded onto the GPU, this memory is occupied and does not change. The calculation is straightforward: the total number of parameters multiplied by the bytes required for the chosen precision. For example, a 3 billion parameter model at BF16 precision (2 bytes/param) requires 3B × 2 = 6 GB of VRAM just to be loaded.</p>
+                </div>
+
+                <div class="border-t border-slate-200 pt-8">
+                    <h3 class="text-xl font-semibold text-slate-800">Gradients</h3>
+                    <p class="mt-2 text-slate-600">Gradients are a <strong class="font-semibold">training-only</strong> memory component. During the backward pass of training, the model calculates the derivative of the loss function with respect to every single trainable parameter. These derivatives, or gradients, indicate how to adjust each weight to reduce the model's error. A buffer must be allocated to store these gradients. The size of this buffer is directly proportional to the number of <em class="italic">trainable</em> parameters. For full fine-tuning, this means the gradient memory is equal to the model weight memory. For parameter-efficient fine-tuning (PEFT) like LoRA, only gradients for the small set of trainable adapter weights are stored, leading to massive memory savings.</p>
+                </div>
+                
+                <div class="border-t border-slate-200 pt-8">
+                    <h3 class="text-xl font-semibold text-slate-800">Optimizer States</h3>
+                    <p class="mt-2 mb-4 text-slate-600">This is another <strong class="font-semibold">training-only</strong> component, and often the largest. Modern optimizers are "stateful," meaning they track historical information about gradients to make smarter weight updates. This history, or "state," consumes VRAM for every trainable parameter. The memory cost varies drastically by optimizer:</p>
+                    <div class="space-y-4 ml-4 pl-4 border-l-2 border-amber-500">
+                        <div>
+                            <h4 class="font-semibold text-slate-700">Adam / AdamW (8 bytes/param)</h4>
+                            <p class="text-slate-600">The standard for transformers, but memory-heavy. It stores two states for each parameter: a 1st moment (momentum) and a 2nd moment (variance). Both are typically kept in full FP32 (4 bytes each) for stability, resulting in 4 + 4 = 8 bytes per parameter. This is why the optimizer states can consume 2x more memory than the model weights and gradients combined.</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-700">AdamW 8-bit (2 bytes/param)</h4>
+                            <p class="text-slate-600">A highly efficient version that quantizes the Adam states. By storing momentum and variance in an 8-bit format (1 byte each), it achieves a 4x memory reduction (1 + 1 = 2 bytes) compared to standard Adam, often with minimal impact on performance.</p>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-700">Adafactor / SGD with Momentum (~4 bytes/param)</h4>
+                            <p class="text-slate-600">These optimizers are leaner. SGD with Momentum stores only one FP32 state (the momentum), costing 4 bytes/param. Adafactor approximates Adam's second moment, so its memory cost is also dominated by the single FP32 momentum state it keeps, making it comparable to SGD.</p>
+                        </div>
+                         <div>
+                            <h4 class="font-semibold text-slate-700">Stateless SGD (0 bytes/param)</h4>
+                            <p class="text-slate-600">The simplest form of SGD is "stateless" and tracks no historical gradient information. It consumes no extra memory but may lead to slower or less stable training compared to its stateful counterparts.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-200 pt-8">
+                    <h3 class="text-xl font-semibold text-slate-800">Activations & KV Cache</h3>
+                    <p class="mt-2 text-slate-600">This is the primary <strong class="font-semibold">dynamic</strong> memory component, as its size depends on the input data (batch size and sequence length), not just the model size.</p>
+                    <ul class="mt-2 list-disc list-inside space-y-2 text-slate-600">
+                        <li><strong class="font-semibold">During training,</strong> this refers to <span class="font-semibold">Activations</span>: the intermediate results from the model's layers during the forward pass. These must be stored in memory to compute gradients during the backward pass. Using techniques like Flash Attention prevents this from scaling quadratically with sequence length, but it remains a significant memory cost that grows with batch size and sequence length.</li>
+                        <li><strong class="font-semibold">During inference,</strong> this refers to the <span class="font-semibold">KV Cache</span>. To generate new tokens efficiently, the model caches the "Key" (K) and "Value" (V) vectors for all previous tokens in the sequence. This avoids expensive recomputation at each step. The size of this cache grows linearly with the sequence length and batch size and is often the main memory bottleneck for serving models with long context windows.</li>
+                    </ul>
+                </div>
+                
+                <div class="border-t border-slate-200 pt-8">
+                    <h3 class="text-xl font-semibold text-slate-800">Sequence Length (Context Window)</h3>
+                    <p class="mt-2 text-slate-600">Sequence Length (denoted as <code class="bg-amber-100 text-amber-800 px-1 rounded-sm">S</code>) represents the number of tokens the model processes at once. It's also known as the "context window." This is a critical parameter that directly controls the <strong class="font-semibold">dynamic memory footprint</strong> of the model.</p>
+                    <ul class="mt-2 list-disc list-inside space-y-2 text-slate-600">
+                        <li>Its impact is linear: doubling the sequence length roughly doubles the memory required for activations and the KV Cache.</li>
+                        <li><strong class="font-semibold">In training,</strong> a longer sequence length increases the size of the activation tensors that must be stored for the backward pass, directly increasing memory usage.</li>
+                        <li><strong class="font-semibold">In inference,</strong> it determines the maximum size of the KV Cache. Handling long contexts (large <code class="bg-amber-100 text-amber-800 px-1 rounded-sm">S</code>) is often limited by the VRAM available to store this cache.</li>
+                    </ul>
+                    <p class="mt-2 text-slate-600">As shown in the dynamic memory formulas, <code class="bg-amber-100 text-amber-800 px-1 rounded-sm">S</code> is a direct multiplier. Therefore, adjusting the sequence length is one of the most effective ways to manage memory when dealing with "Out of Memory" errors, especially in long-context scenarios.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div id="codeContent" class="tab-content hidden bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-bold text-slate-900 mb-2">Example Training Script</h2>
+            <p class="mb-6 text-slate-600">This script demonstrates a more realistic training setup for Paligemma using PyTorch, `transformers`, and the `datasets` library. The comments highlight key parameters you can change to manage performance and memory, directly relating to the concepts explained in this calculator.</p>
+            <pre class="code-block"><code><span class="keyword">import</span> torch
+<span class="keyword">from</span> datasets <span class="keyword">import</span> load_dataset
+<span class="keyword">from</span> transformers <span class="keyword">import</span> (
+    PaliGemmaForConditionalGeneration,
+    AutoProcessor,
+    TrainingArguments,
+    Trainer
+)
+<span class="keyword">from</span> PIL <span class="keyword">import</span> Image
+<span class="keyword">import</span> requests
+
+<span class="comment"># 1. --- MODEL, PRECISION, AND PERFORMANCE ---</span>
+
+<span class="comment"># Parameter: Model Size</span>
+<span class="comment"># Change this string to load different model sizes. E.g., "google/paligemma-3b-pt-224".</span>
+<span class="comment"># This is the largest factor in STATIC memory usage (Weights, Gradients, Optimizer States).</span>
+model_id = <span class="string">"google/paligemma-3b-pt-224"</span>
+
+<span class="comment"># Parameter: Precision</span>
+<span class="comment"># `torch_dtype` controls the precision of model weights.</span>
+<span class="comment"># torch.bfloat16 (BF16) is recommended for training on modern GPUs (Ampere+).</span>
+model_precision = torch.bfloat16
+
+<span class="comment"># Performance Factor: Flash Attention 2</span>
+<span class="comment"># `attn_implementation="flash_attention_2"` drastically reduces activation memory.</span>
+<span class="comment"># It is crucial for training with long sequences or large batches.</span>
+use_flash_attention = <span class="keyword">True</span>
+
+processor = AutoProcessor.from_pretrained(model_id)
+model = PaliGemmaForConditionalGeneration.from_pretrained(
+    model_id,
+    torch_dtype=model_precision,
+    attn_implementation=<span class="string">"flash_attention_2"</span> <span class="keyword">if</span> use_flash_attention <span class="keyword">else</span> <span class="string">"eager"</span>,
+    device_map=<span class="string">"auto"</span>
+)
+
+<span class="comment"># 2. --- DATASET AND PREPROCESSING ---</span>
+
+<span class="comment"># Load a small sample of a real dataset (e.g., GQA for visual question answering)</span>
+<span class="comment"># For a real run, you would use the full dataset: `load_dataset("gqa", "all")`</span>
+ds = load_dataset(<span class="string">'graphcore/gqa-tiny'</span>, split=<span class="string">'train'</span>)
+
+<span class="comment"># We need to format the data into a prompt-response structure for the model.</span>
+<span class="comment"># The prompt for PaliGemma is typically a task prefix like "answer" or "caption".</span>
+<span class="keyword">def</span> <span class="function">preprocess_data</span>(examples):
+    <span class="comment"># Parameter: Sequence Length (implicitly controlled by max_length in processor)</span>
+    <span class="comment"># This is a major factor in DYNAMIC memory usage.</span>
+    max_length = <span class="number">128</span> 
+    
+    <span class="comment"># Download and open images. In a real use case, images would be local.</span>
+    <span class="keyword">try</span>:
+        image_url = examples[<span class="string">'image_url'</span>]
+        image = Image.open(requests.get(image_url, stream=<span class="keyword">True</span>).raw).convert(<span class="string">"RGB"</span>)
+    <span class="keyword">except</span> Exception:
+        <span class="comment"># Handle cases where image fails to load</span>
+        image = Image.new(<span class="string">'RGB'</span>, (<span class="number">224</span>, <span class="number">224</span>))
+        
+    prompt = <span class="string">"answer "</span> + examples[<span class="string">'question'</span>]
+    
+    inputs = processor(
+        text=prompt, 
+        images=image, 
+        return_tensors=<span class="string">"pt"</span>, 
+        padding=<span class="string">'max_length'</span>, 
+        max_length=max_length, 
+        truncation=<span class="keyword">True</span>
+    )
+    
+    <span class="comment"># The 'labels' are the tokenized answers.</span>
+    labels = processor(
+        text=examples[<span class="string">'answer'</span>], 
+        return_tensors=<span class="string">"pt"</span>, 
+        padding=<span class="string">'max_length'</span>, 
+        max_length=max_length, 
+        truncation=<span class="keyword">True</span>
+    ).input_ids
+    
+    inputs[<span class="string">'labels'</span>] = labels
+    <span class="keyword">return</span> inputs
+
+processed_ds = ds.map(preprocess_data, remove_columns=ds.column_names)
+
+<span class="comment"># 3. --- TRAINING CONFIGURATION ---</span>
+
+training_args = TrainingArguments(
+    output_dir=<span class="string">"./paligemma-finetuned-gqa"</span>,
+    
+    <span class="comment"># Parameter: Per-Device Batch Size (B)</span>
+    <span class="comment"># Number of samples on one GPU. Directly impacts dynamic memory.</span>
+    per_device_train_batch_size=<span class="number">8</span>,
+    
+    <span class="comment"># Performance Factor: Gradient Accumulation</span>
+    <span class="comment"># Effective batch size = per_device_train_batch_size * gradient_accumulation_steps.</span>
+    <span class="comment"># Allows large effective batch sizes by trading compute for memory.</span>
+    gradient_accumulation_steps=<span class="number">4</span>,
+
+    <span class="comment"># Parameter: Optimizer</span>
+    <span class="comment"># 'adamw_torch' is the default (8 bytes/param). For memory savings, consider</span>
+    <span class="comment"># `optim="paged_adamw_8bit"` which requires `bitsandbytes`.</span>
+    optim=<span class="string">"adamw_torch"</span>,
+    
+    <span class="comment"># Parameter: Precision (for training loop)</span>
+    <span class="comment"># Use BF16 mixed-precision training. Requires Ampere+ GPU. Set to `fp16=True` for older GPUs.</span>
+    bf16=<span class="keyword">True</span>,
+    
+    <span class="comment"># Performance Factor: Gradient Checkpointing</span>
+    <span class="comment"># Trades compute for memory by not storing all activations.</span>
+    <span class="comment"># Dramatically reduces activation memory, allowing larger batches or longer sequences.</span>
+    gradient_checkpointing=<span class="keyword">True</span>,
+
+    <span class="comment"># Performance Factor: Dataloader Workers</span>
+    <span class="comment"># `dataloader_num_workers` uses multiple CPU processes to prepare data batches.</span>
+    <span class="comment"># Prevents the GPU from waiting for data, improving throughput. Uses CPU RAM.</span>
+    dataloader_num_workers=<span class="number">4</span>,
+    
+    <span class="comment"># Other standard arguments</span>
+    num_train_epochs=<span class="number">1</span>,
+    logging_steps=<span class="number">10</span>,
+    save_strategy=<span class="string">"epoch"</span>,
+    learning_rate=<span class="number">2e-5</span>,
+    report_to=<span class="string">"none"</span>, <span class="comment"># Can be "wandb", "tensorboard"</span>
+)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=processed_ds,
+)
+
+<span class="comment"># Start the training process</span>
+trainer.train()
+</code></pre>
+        </div>
+    </div>
+
+    <script>
+        const modelParams = { '3B': { P: 3e9, L: 22, Hd: 2048 }, '10B': { P: 10e9, L: 42, Hd: 3584 }, '28B': { P: 28e9, L: 46, Hd: 4608 } };
+        const precisionNames = { '4': 'FP32', '2': 'BF16', '1': 'FP8', '0.5': 'INT4' };
+
+        const scenarioEl = document.getElementById('scenario');
+        const modelEl = document.getElementById('model');
+        const precisionEl = document.getElementById('precision');
+        const optimizerEl = document.getElementById('optimizer');
+        const batchSizeEl = document.getElementById('batchSize');
+        const seqLengthEl = document.getElementById('seqLength');
+        const seqLengthValueEl = document.getElementById('seqLengthValue');
+        const calculationDetailsEl = document.getElementById('calculationDetails');
+        const totalMemoryEl = document.getElementById('totalMemory');
+        const optimizerGroupEl = document.getElementById('optimizer-group');
+        const hardwareGuidanceEl = document.getElementById('hardware-guidance').querySelector('p');
+        
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        const ctx = document.getElementById('memoryChart').getContext('2d');
+        const memoryChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: ['Model Weights', 'Gradients', 'Optimizer States', 'Activations/KV Cache'], datasets: [{ label: 'Memory (GB)', data: [0, 0, 0, 0], backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(239, 68, 68, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(16, 185, 129, 0.7)'], borderColor: ['rgba(59, 130, 246, 1)', 'rgba(239, 68, 68, 1)', 'rgba(245, 158, 11, 1)', 'rgba(16, 185, 129, 1)'], borderWidth: 1 }] },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(context) { return `${context.label}: ${context.raw.toFixed(2)} GB`; } } } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Memory (GB)' } } } }
+        });
+        
+        function formatBytes(bytes) { return (bytes / 1e9).toFixed(2); }
+        function formatNumber(num) { if (num >= 1e9) return `${num / 1e9}B`; if (num >= 1e6) return `${num / 1e6}M`; return num.toString(); }
+
+        function calculateAndRender() {
+            const scenario = scenarioEl.value;
+            const modelKey = modelEl.value;
+            const p = modelParams[modelKey].P;
+            const l = modelParams[modelKey].L;
+            const hd = modelParams[modelKey].Hd;
+            const precisionBytes = parseFloat(precisionEl.value);
+            const optimizerBytes = scenario === 'training' ? parseInt(optimizerEl.value) : 0;
+            const batchSize = parseInt(batchSizeEl.value);
+            const seqLength = parseInt(seqLengthEl.value);
+            
+            optimizerGroupEl.style.display = scenario === 'training' ? 'block' : 'none';
+            let detailsHtml = '';
+            
+            const modelMem = p * precisionBytes;
+            detailsHtml += `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">Model Weights</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${formatBytes(modelMem)}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatNumber(p)} params × ${precisionBytes} bytes (${precisionNames[precisionEl.value]})</td></tr>`;
+
+            let gradientMem = 0;
+            if (scenario === 'training') {
+                gradientMem = p * precisionBytes;
+                detailsHtml += `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">Gradients</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${formatBytes(gradientMem)}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatNumber(p)} params × ${precisionBytes} bytes (${precisionNames[precisionEl.value]})</td></tr>`;
+            }
+
+            let optimizerMem = 0;
+            if (scenario === 'training') {
+                optimizerMem = p * optimizerBytes;
+                let optimizerCalcString = `${formatNumber(p)} params × ${optimizerBytes} bytes`;
+                if (optimizerBytes === 8) optimizerCalcString += ' (FP32 states)';
+                if (optimizerBytes === 2) optimizerCalcString += ' (INT8 states)';
+                detailsHtml += `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">Optimizer States</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${formatBytes(optimizerMem)}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${optimizerCalcString}</td></tr>`;
+            }
+
+            let dynamicMem = 0;
+            if (scenario === 'training') {
+                const k_act = 20;
+                dynamicMem = l * batchSize * seqLength * hd * k_act * precisionBytes;
+                detailsHtml += `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">Activations</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${formatBytes(dynamicMem)}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${l}L × ${batchSize}B × ${seqLength}S × ${hd}H × ${k_act}K × ${precisionBytes}b</td></tr>`;
+            } else {
+                dynamicMem = batchSize * seqLength * l * hd * 2 * precisionBytes;
+                detailsHtml += `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">KV Cache</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">${formatBytes(dynamicMem)}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${batchSize}B × ${seqLength}S × ${l}L × ${hd}H × 2 × ${precisionBytes}b</td></tr>`;
+            }
+
+            const subtotal = modelMem + gradientMem + optimizerMem + dynamicMem;
+            const total = subtotal * 1.15;
+            calculationDetailsEl.innerHTML = detailsHtml;
+            totalMemoryEl.textContent = `${(total / 1e9).toFixed(2)} GB`;
+            
+            const chartData = [parseFloat(formatBytes(modelMem)), parseFloat(formatBytes(gradientMem)), parseFloat(formatBytes(optimizerMem)), parseFloat(formatBytes(dynamicMem))];
+            memoryChart.data.datasets[0].data = chartData;
+            memoryChart.data.labels = scenario === 'inference' ? ['Model Weights', 'Gradients (N/A)', 'Optimizer (N/A)', 'KV Cache'] : ['Model Weights', 'Gradients', 'Optimizer States', 'Activations'];
+            memoryChart.update();
+            updateGuidance(total / 1e9);
+        }
+
+        function updateGuidance(totalGB) {
+            let guidanceText = '';
+            if (totalGB > 80) { guidanceText = `At ~${totalGB.toFixed(1)} GB, this exceeds single-GPU capacity. Requires multi-GPU setup (TP/PP/ZeRO).`; }
+            else if (totalGB > 48) { guidanceText = `At ~${totalGB.toFixed(1)} GB, an 80GB GPU (A100/H100) is required.`; }
+            else if (totalGB > 24) { guidanceText = `At ~${totalGB.toFixed(1)} GB, a 40GB+ GPU (A100 40GB, L40S 48GB) is recommended.`; }
+            else if (totalGB > 12) { guidanceText = `At ~${totalGB.toFixed(1)} GB, this fits within a consumer 24GB GPU (RTX 3090/4090).`; }
+            else { guidanceText = `At ~${totalGB.toFixed(1)} GB, this configuration is feasible on most modern mid-to-high-end GPUs.`; }
+            hardwareGuidanceEl.textContent = guidanceText;
+        }
+
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                tabButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.classList.add('text-slate-500', 'hover:text-slate-700', 'hover:border-slate-300');
+                });
+                button.classList.add('active');
+                button.classList.remove('text-slate-500', 'hover:text-slate-700', 'hover:border-slate-300');
+                
+                tabContents.forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(button.dataset.tab + 'Content').classList.remove('hidden');
+            });
+        });
+
+        seqLengthEl.addEventListener('input', (e) => { seqLengthValueEl.textContent = e.target.value; calculateAndRender(); });
+        [scenarioEl, modelEl, precisionEl, optimizerEl, batchSizeEl].forEach(el => { el.addEventListener('change', calculateAndRender); });
+        document.addEventListener('DOMContentLoaded', calculateAndRender);
+    </script>
+</body>
+</html>

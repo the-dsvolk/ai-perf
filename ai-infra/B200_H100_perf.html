@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generational Performance Trajectory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Tech Neutral -->
+    <!-- Application Structure Plan: The SPA is designed as an interactive dashboard. The top section features a master control panel to select a performance metric, which dynamically updates a large line chart showing the trend over time. This provides an immediate, high-level comparative view. Below, a clickable timeline allows users to perform a "deep dive" into each specific GPU generation, revealing detailed specs and qualitative insights. This dual structure serves two user journeys: the quick overview and the detailed exploration, making the complex report data highly consumable and user-driven rather than a static, linear read. -->
+    <!-- Visualization & Content Choices: Report Info -> Performance metrics over time. Goal -> Show change/trends. Viz -> Interactive Line Chart (Chart.js Canvas). Interaction -> Buttons to switch the displayed metric. Justification -> A line chart is the best way to visualize temporal data. Making it interactive prevents UI clutter. | Report Info -> Detailed specs per GPU. Goal -> Organize/Inform. Viz -> HTML/Tailwind-styled content blocks. Interaction -> Clickable timeline navigation to show/hide relevant content block. Justification -> This "tabbed" view is an intuitive UI pattern for exploring detailed information without overwhelming the user on a single page. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* Tailwind gray-50 */
+            color: #1f2937; /* Tailwind gray-800 */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 280px;
+            padding-top: 20px; /* Make space for labels on top */
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 320px;
+            }
+        }
+        .timeline-btn {
+            transition: all 0.2s ease-in-out;
+            border-bottom-width: 4px;
+            border-color: transparent;
+        }
+        .timeline-btn.active {
+            border-color: #f59e0b; /* amber-500 */
+            color: #f59e0b;
+        }
+        .kpi-card {
+             background: white;
+             border-radius: 0.75rem;
+             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+             border: 1px solid #e5e7eb;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <main class="container mx-auto px-4 py-8 md:py-12">
+        <header class="text-center mb-10 md:mb-16">
+            <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 mb-2">Generational Performance Trajectory</h1>
+            <p class="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto">A side-by-side comparison of key performance metrics across NVIDIA's Datacenter GPU architectures.</p>
+        </header>
+
+        <section id="dashboard" class="mb-12 md:mb-20 p-6 bg-white rounded-2xl shadow-lg border border-gray-200">
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-x-6">
+                
+                <div>
+                    <h3 class="text-xl font-semibold text-center text-gray-700 mb-2">Peak AI Performance (PFLOPS)</h3>
+                     <div class="chart-container">
+                        <canvas id="aiPerfChart"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-center text-gray-700 mb-2">FP16 Tensor Performance (TFLOPS)</h3>
+                     <div class="chart-container">
+                        <canvas id="tensorChart"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-center text-gray-700 mb-2">Memory Bandwidth (TB/s)</h3>
+                    <div class="chart-container">
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold text-center text-gray-700 mb-2">Transistors (Billions)</h3>
+                     <div class="chart-container">
+                        <canvas id="transistorChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="deep-dive" class="bg-gray-50/50 rounded-2xl p-6 md:p-8">
+            <div class="text-center mb-8 md:mb-12">
+                <h2 class="text-3xl font-bold text-gray-800">Architectural Deep Dive</h2>
+                <p class="text-md text-gray-500 mt-1">Click on an architecture to explore its groundbreaking innovations and key specifications.</p>
+            </div>
+            
+            <nav id="timeline-nav" class="flex justify-center border-b border-gray-200 mb-8">
+                <div class="flex flex-wrap justify-center -mb-px">
+                     <button data-gen="volta" class="timeline-btn active text-lg font-semibold py-3 px-4 md:px-6">Volta</button>
+                     <button data-gen="ampere" class="timeline-btn text-lg font-semibold py-3 px-4 md:px-6">Ampere</button>
+                     <button data-gen="hopper" class="timeline-btn text-lg font-semibold py-3 px-4 md:px-6">Hopper</button>
+                     <button data-gen="blackwell" class="timeline-btn text-lg font-semibold py-3 px-4 md:px-6">Blackwell</button>
+                </div>
+            </nav>
+
+            <div id="generation-details">
+            </div>
+        </section>
+
+        <footer class="text-center mt-12 md:mt-20">
+            <p class="text-sm text-gray-500">Data sourced from the provided performance report.</p>
+        </footer>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            Chart.register(ChartDataLabels);
+
+            const gpuData = {
+                volta: {
+                    name: "Volta (V100)",
+                    year: 2017,
+                    memory: 0.9,
+                    ai_perf: 0.125,
+                    ai_precision: "FP16",
+                    fp16_tensor: 125,
+                    transistors: 21.1,
+                    title: "Volta Architecture: The Dawn of Tensor Cores",
+                    summary: "The Volta architecture, with the Tesla V100, represented a pivotal moment by introducing Tensor Cores. This specialized hardware was explicitly designed to accelerate the matrix arithmetic at the heart of deep learning, signaling NVIDIA's strategic pivot towards the burgeoning AI market and popularizing FP16 precision for training.",
+                    innovation: "Introduced first-generation Tensor Cores, delivering 125 TFLOPS of deep learning performance and fundamentally changing the landscape for AI acceleration.",
+                    specs: [
+                        { label: "Intro Year", value: "2017" },
+                        { label: "Total Memory", value: "32 GB HBM2" },
+                        { label: "Memory BW", value: "0.9 TB/s" },
+                        { label: "Peak AI Perf.", value: "125 TFLOPS (FP16)" },
+                        { label: "Transistors", value: "21.1 Billion (12nm)" },
+                        { label: "TDP (SXM2)", value: "~300W" }
+                    ]
+                },
+                ampere: {
+                    name: "Ampere (A100)",
+                    year: 2020,
+                    memory: 2.0,
+                    ai_perf: 0.312,
+                    ai_precision: "TF32",
+                    fp16_tensor: 312,
+                    transistors: 54,
+                    title: "Ampere Architecture: Maturing AI and Elasticity",
+                    summary: "Ampere built substantially on Volta's foundation, introducing third-generation Tensor Cores and the highly accessible TensorFloat-32 (TF32) precision. TF32 lowered the barrier for AI speedups by providing FP16-like performance with the ease-of-use of FP32. Ampere also introduced Multi-Instance GPU (MIG) for enhanced datacenter flexibility and utilization.",
+                    innovation: "TensorFloat-32 (TF32) precision bridged the gap between performance and usability. Multi-Instance GPU (MIG) allowed a single GPU to be partitioned into seven independent instances.",
+                    specs: [
+                        { label: "Intro Year", value: "2020" },
+                        { label: "Total Memory", value: "80 GB HBM2e" },
+                        { label: "Memory BW", value: "2.0 TB/s" },
+                        { label: "Peak AI Perf.", value: "312 TFLOPS (FP16 Sparse)" },
+                        { label: "Transistors", value: "54 Billion (7nm)" },
+                        { label: "TDP (SXM4)", value: "~400W" }
+                    ]
+                },
+                hopper: {
+                    name: "Hopper (H200)",
+                    year: 2024,
+                    memory: 4.8,
+                    ai_perf: 4,
+                    ai_precision: "FP8",
+                    fp16_tensor: 989,
+                    transistors: 80,
+                    title: "Hopper Architecture: Specialized for the Transformer Era",
+                    summary: "Engineered for giant AI models, the Hopper architecture introduced the Transformer Engine and FP8 precision. This highly specialized hardware dynamically optimizes calculations for Transformer models, massively boosting throughput. The updated H200 variant further emphasized the critical role of memory by upgrading to faster, larger HBM3e, signaling that memory access had become a key bottleneck.",
+                    innovation: "The Transformer Engine with FP8 support, delivering up to 4 PFLOPS of AI performance and specifically targeting the dominant architecture in modern AI.",
+                    specs: [
+                        { label: "Intro Year", value: "2022 (H100) / 2024 (H200)" },
+                        { label: "Total Memory", value: "141 GB HBM3e" },
+                        { label: "Memory BW", value: "4.8 TB/s" },
+                        { label: "Peak AI Perf.", value: "4 PFLOPS (FP8 Sparse)" },
+                        { label: "Transistors", value: "80 Billion (4N)" },
+                        { label: "TDP (SXM5)", value: "~700W" }
+                    ]
+                },
+                blackwell: {
+                    name: "Blackwell (B200)",
+                    year: 2024,
+                    memory: 8.0,
+                    ai_perf: 20,
+                    ai_precision: "FP4",
+                    fp16_tensor: 2250,
+                    transistors: 208,
+                    title: "Blackwell Architecture: Scaling to Extremes with New Paradigms",
+                    summary: "Blackwell delivers another monumental leap in performance through two key strategies: a novel dual-die design and the aggressive adoption of new, lower-precision formats like FP4. The multi-chip approach allows for a massive increase in transistor count, while FP4 pushes the boundaries of the precision-performance trade-off to deliver unprecedented AI throughput for the next generation of generative AI.",
+                    innovation: "A dual-die GPU design with a 10 TB/s interconnect, and fifth-generation Tensor Cores with FP4 support to achieve a staggering 20 PFLOPS of AI performance.",
+                    specs: [
+                        { label: "Intro Year", value: "2024 (Announced)" },
+                        { label: "Total Memory", value: "192 GB HBM3e" },
+                        { label: "Memory BW", value: "8.0 TB/s" },
+                        { label: "Peak AI Perf.", value: "20 PFLOPS (FP4)" },
+                        { label: "Transistors", value: "208 Billion (4NP, dual-die)" },
+                        { label: "TDP (SXM)", value: "~1000W" }
+                    ]
+                }
+            };
+
+            const generations = Object.values(gpuData);
+            const generationDetailsContainer = document.getElementById('generation-details');
+
+            const metricsConfig = {
+                memory: {
+                    label: 'Memory Bandwidth (TB/s)',
+                    unit: 'TB/s',
+                    data: generations.map(g => g.memory)
+                },
+                ai_perf: {
+                    label: 'Peak AI Performance (PFLOPS)',
+                    unit: 'PFLOPS',
+                    data: generations.map(g => g.ai_perf),
+                },
+                fp16_tensor: {
+                    label: 'FP16 Tensor Performance (TFLOPS)',
+                    unit: 'TFLOPS',
+                    data: generations.map(g => g.fp16_tensor)
+                },
+                transistors: {
+                    label: 'Transistors (Billions)',
+                    unit: 'B',
+                    data: generations.map(g => g.transistors)
+                }
+            };
+            
+            function createGenerationDetailHTML(gen) {
+                return `
+                    <div id="gen-${gen.name.split(' ')[0].toLowerCase()}" class="generation-content bg-white p-6 md:p-8 rounded-xl shadow-md border border-gray-200 animate-fade-in">
+                        <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                            <div class="lg:col-span-3">
+                                <h3 class="text-2xl md:text-3xl font-bold text-gray-800 mb-3">${gen.title}</h3>
+                                <p class="text-gray-600 mb-4">${gen.summary}</p>
+                                <div class="bg-amber-50 border-l-4 border-amber-400 text-amber-800 p-4 rounded-r-lg">
+                                    <p class="font-semibold">Key Innovation:</p>
+                                    <p>${gen.innovation}</p>
+                                </div>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <h4 class="text-xl font-semibold text-gray-700 mb-4">Specifications</h4>
+                                <ul class="space-y-3">
+                                    ${gen.specs.map(spec => `
+                                        <li class="flex justify-between items-center text-sm">
+                                            <span class="font-medium text-gray-500">${spec.label}</span>
+                                            <span class="font-bold text-gray-800 text-right">${spec.value}</span>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderGenerationDetails() {
+                generationDetailsContainer.innerHTML = Object.values(gpuData).map(createGenerationDetailHTML).join('');
+                document.querySelectorAll('.generation-content').forEach((el, index) => {
+                     if (index !== 0) el.classList.add('hidden');
+                });
+            }
+            
+            function createLineChart(canvasId, metricConfig) {
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                const chartLabels = generations.map(g => {
+                    const namePart = g.name.split(' ')[0];
+                    const year = g.year;
+                    if (canvasId === 'aiPerfChart') {
+                        return [`${namePart} (${year})`, `(${g.ai_precision})`];
+                    }
+                    return `${namePart} (${year})`;
+                });
+                
+                const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+                gradient.addColorStop(0, 'rgba(252, 211, 77, 0.4)');
+                gradient.addColorStop(1, 'rgba(252, 211, 77, 0)');
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: metricConfig.label,
+                            data: metricConfig.data,
+                            backgroundColor: gradient,
+                            borderColor: 'rgb(245, 158, 11)',
+                            borderWidth: 3,
+                            pointBackgroundColor: 'rgb(245, 158, 11)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgb(245, 158, 11)',
+                            pointRadius: 6,
+                            pointHoverRadius: 9,
+                            tension: 0.1,
+                            fill: true,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: {
+                            padding: {
+                                top: 30
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                type: 'linear',
+                                title: { display: false },
+                                grid: { color: '#e5e7eb' },
+                                ticks: { font: { size: 14 } }
+                            },
+                             x: {
+                                grid: { display: false },
+                                ticks: { font: { size: 14 } }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: true,
+                                backgroundColor: '#1f2937',
+                                titleFont: { size: 16, weight: 'bold' },
+                                bodyFont: { size: 14 },
+                                padding: 12,
+                                cornerRadius: 6,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = `${context.dataset.label}: ${context.formattedValue} ${metricConfig.unit || ''}`;
+                                        if (canvasId === 'aiPerfChart') {
+                                            const gen = generations[context.dataIndex];
+                                            label += ` (${gen.ai_precision})`;
+                                        }
+                                        return label;
+                                    }
+                                }
+                            },
+                            datalabels: {
+                                anchor: 'center',
+                                align: function(context) {
+                                    if (context.dataIndex === 0) {
+                                        return -45;
+                                    }
+                                    return 'top';
+                                },
+                                offset: function(context) {
+                                     return context.dataIndex === 0 ? 16 : 8;
+                                },
+                                font: {
+                                    weight: 'bold',
+                                    size: 14
+                                },
+                                formatter: function(value) {
+                                     if (value < 1) return value.toFixed(3);
+                                     if (value < 100) return value.toFixed(1);
+                                     return Math.round(value);
+                                },
+                                color: '#374151' // tailwind gray-700
+                            }
+                        }
+                    }
+                });
+            }
+
+            function setupEventListeners() {
+                document.querySelectorAll('#timeline-nav .timeline-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const targetGenName = e.target.dataset.gen;
+                        const targetId = `gen-${targetGenName}`;
+                        
+                        document.querySelectorAll('.generation-content').forEach(el => {
+                            el.classList.add('hidden');
+                        });
+
+                        const targetElement = document.getElementById(targetId);
+                        if (targetElement) {
+                             targetElement.classList.remove('hidden');
+                        } else {
+                             // Fallback for H200 being under "hopper" button
+                             if(targetGenName === 'hopper') {
+                                document.getElementById('gen-hopper').classList.remove('hidden');
+                             }
+                        }
+
+                        document.querySelectorAll('#timeline-nav .timeline-btn').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        e.target.classList.add('active');
+                    });
+                });
+            }
+
+            renderGenerationDetails();
+            createLineChart('aiPerfChart', metricsConfig.ai_perf);
+            createLineChart('tensorChart', metricsConfig.fp16_tensor);
+            createLineChart('memoryChart', metricsConfig.memory);
+            createLineChart('transistorChart', metricsConfig.transistors);
+            setupEventListeners();
+        });
+    </script>
+</body>
+</html>

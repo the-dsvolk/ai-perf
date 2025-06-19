@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfiniBand Explorer: Queue Pairs & Packet Transmission</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Visualization & Content Choices:
+        - Overview: Text blocks (HTML/Tailwind). Goal: Inform. Justification: Standard intro.
+        - QP Deep Dive: Text blocks, interactive accordion for Core Components (HTML/Tailwind/JS). Security section removed for simplification. Goal: Explain QP basics. Justification: Focus on core QP concepts.
+        - Sending Process: Sequential text blocks (HTML/Tailwind/JS). Goal: Detail process. Justification: Step-by-step explanation.
+        - Send-Receive Flow Diagram: Mermaid.js sequence diagram. Goal: Visualize full communication loop. Justification: User instruction to use Mermaid.js for clearer flow representation.
+        - Transport Modes: Interactive HTML table and descriptions, plus a Chart.js bar chart for comparable features (HTML/Tailwind/JS/Chart.js). Goal: Compare. Justification: Clear comparison of features.
+        CONFIRMING NO SVG graphics used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f4; /* stone-100 */
+            color: #292524; /* stone-800 */
+            font-size: 18px; /* Increased base font size */
+            line-height: 1.7; /* Better line height for readability */
+        }
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            border-color: #d97706; /* amber-600 */
+            color: #d97706; /* amber-600 */
+            background-color: #fef3c7; /* amber-100 */
+        }
+        .content-section {
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .accordion-button.open + .accordion-content {
+            max-height: 1000px; /* Adjust as needed */
+        }
+        .flow-step {
+            background-color: #fafaf9; /* stone-50 */
+            border-left-width: 4px;
+            /* border-color set dynamically or by class */
+        }
+        .sender-step { border-color: #f59e0b; /* amber-500 */ }
+        .receiver-step { border-color: #10b981; /* emerald-500 */ }
+        .network-step { border-color: #3b82f6; /* blue-500 */ }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* max-w-2xl */
+            margin-left: auto;
+            margin-right: auto;
+            height: 320px; /* h-80 */
+            max-height: 400px;
+        }
+        @media (min-width: 768px) { /* md breakpoint */
+            .chart-container {
+                height: 384px; /* h-96 */
+            }
+        }
+        .table th, .table td {
+            border: 1px solid #e7e5e4; /* stone-200 */
+            padding: 0.75rem; /* p-3 */
+        }
+        .table th {
+            background-color: #fef3c7; /* amber-100 */
+            color: #92400e; /* amber-700 */
+        }
+        /* Mermaid diagram container styling */
+        .mermaid-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fafaf9; /* stone-50 */
+            padding: 2rem;
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); /* shadow-md */
+            overflow-x: auto; /* Allow horizontal scroll for large diagrams */
+            min-height: 1200px; /* Increased height for larger diagram */
+            width: 100%;
+            max-width: none; /* Remove max-width restriction */
+        }
+        
+        /* Make mermaid diagrams larger */
+        .mermaid {
+            transform: scale(1.6);
+            transform-origin: center;
+            margin: 60px;
+            min-width: 1200px;
+        }
+        
+        /* Enhanced typography for better readability */
+        h1 {
+            font-size: 3rem !important;
+        }
+        
+        h2 {
+            font-size: 2.2rem !important;
+        }
+        
+        h3 {
+            font-size: 1.6rem !important;
+        }
+        
+        p {
+            font-size: 1.1rem !important;
+            line-height: 1.8 !important;
+        }
+        
+        li {
+            font-size: 1.05rem !important;
+            line-height: 1.7 !important;
+        }
+        
+        .tab-button {
+            font-size: 1.1rem !important;
+            padding: 12px 20px !important;
+        }
+        
+        .table th, .table td {
+            font-size: 1rem !important;
+            padding: 1rem !important;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-amber-700">InfiniBand Explorer</h1>
+            <p class="text-lg text-stone-600 mt-2">Understanding Queue Pairs & Packet Transmission</p>
+        </header>
+
+        <nav class="mb-8">
+            <div class="flex flex-wrap justify-center space-x-2 sm:space-x-4">
+                <button class="tab-button active py-2 px-4 rounded-lg border-b-4 border-transparent hover:bg-amber-50 hover:text-amber-600 font-semibold" data-tab="qpDeepDive">QP Deep Dive</button>
+                <button class="tab-button py-2 px-4 rounded-lg border-b-4 border-transparent hover:bg-amber-50 hover:text-amber-600 font-semibold" data-tab="sendingProcess">Packet's Journey</button>
+                <button class="tab-button py-2 px-4 rounded-lg border-b-4 border-transparent hover:bg-amber-50 hover:text-amber-600 font-semibold" data-tab="sendReceiveFlow">Send-Receive Flow</button>
+                <button class="tab-button py-2 px-4 rounded-lg border-b-4 border-transparent hover:bg-amber-50 hover:text-amber-600 font-semibold" data-tab="transportModes">Transport Modes</button>
+            </div>
+        </nav>
+
+        <main>
+            <section id="qpDeepDive" class="content-section active bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold text-amber-700 mb-4">Queue Pairs (QPs) Explained</h2>
+                <p class="mb-6 text-stone-700 leading-relaxed">
+                    Queue Pairs are the cornerstone of InfiniBand communication, acting as the bridge between software applications and the hardware Host Channel Adapter (HCA). They are virtual interfaces that logically pair Send Queues and Receive Queues, enabling efficient data transfer by minimizing OS overhead. Each QP is uniquely identified by a Queue Pair Number (QPN).
+                </p>
+
+                <div class="space-y-4">
+                    <div>
+                        <button class="accordion-button open w-full text-left p-4 bg-amber-50 hover:bg-amber-100 rounded-md text-amber-700 font-semibold flex justify-between items-center">
+                            <span>Core Components of a QP</span>
+                            <span class="text-xl transform transition-transform duration-200 rotate-180">&#x25BC;</span>
+                        </button>
+                        <div class="accordion-content bg-white p-4 border border-amber-100 rounded-b-md" style="max-height: 1000px;">
+                            <ul class="list-disc list-inside space-y-2 text-stone-700">
+                                <li><strong>Send Queue (SQ):</strong> Stores send Work Queue Elements (WQEs) detailing data to be transmitted.</li>
+                                <li><strong>Receive Queue (RQ):</strong> Holds receive WQEs, specifying where incoming data should be placed.</li>
+                                <li><strong>Shared Receive Queue (SRQ):</strong> Optional; allows multiple QPs to share a single RQ, conserving memory.</li>
+                                <li><strong>Completion Queue (CQ):</strong> Stores Completion Queue Elements (CQEs) indicating the status of processed WQEs. A CQ provides feedback to the application.</li>
+                                <li><strong>Queue Pair Context (QPC):</strong> A data structure storing operational parameters and state for the QP, managed by the HCA.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sendingProcess" class="content-section bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold text-amber-700 mb-4">The Packet's Journey: InfiniBand Sending Process</h2>
+                <p class="mb-6 text-stone-700 leading-relaxed">
+                    Data transmission in InfiniBand is a well-defined sequence, largely offloaded to the Host Channel Adapter (HCA) to achieve low latency and high throughput. Here's how it works:
+                </p>
+                <div class="space-y-4">
+                    <div class="p-4 flow-step sender-step rounded-md shadow">
+                        <h3 class="font-semibold text-lg text-amber-600">1. Application & Work Requests (WRs)</h3>
+                        <p class="text-stone-700">Applications initiate data transfers by creating Work Requests (WRs) using the InfiniBand Verbs API (e.g., `ibv_post_send()`). WRs detail the operation (SEND, RDMA WRITE/READ), local data buffers, and remote memory info for RDMA.</p>
+                    </div>
+                    <div class="p-4 flow-step sender-step rounded-md shadow">
+                        <h3 class="font-semibold text-lg text-amber-600">2. Work Queue Elements (WQEs)</h3>
+                        <p class="text-stone-700">Posted WRs become Work Queue Elements (WQEs) in the QP's Send Queue (SQ) or Receive Queue (RQ). WQEs are the HCA's task list, containing all parameters for autonomous execution.</p>
+                    </div>
+                    <div class="p-4 flow-step sender-step rounded-md shadow">
+                        <h3 class="font-semibold text-lg text-amber-600">3. HCA in Action</h3>
+                        <p class="text-stone-700 mb-2">The HCA takes over:</p>
+                        <ul class="list-disc list-inside space-y-1 text-stone-700 pl-4">
+                            <li><strong>WQE Fetch:</strong> Fetches WQEs from the SQ.</li>
+                            <li><strong>Doorbell Notification:</strong> Applications "ring a doorbell" (a memory-mapped write) to signal new WQEs to the HCA.</li>
+                            <li><strong>Data Segmentation:</strong> If data exceeds Path MTU, the HCA segments it into multiple packets (and handles reassembly on receipt).</li>
+                            <li><strong>Packet Header Construction:</strong> Builds InfiniBand packet headers (LRH, GRH, BTH, Extended Headers) using info from WQE and QP Context.</li>
+                            <li><strong>CRC Calculation:</strong> Adds Invariant CRC (ICRC) and Variant CRC (VCRC) for data integrity.</li>
+                        </ul>
+                        <p class="text-sm text-stone-600 mt-2">The QP must be in a valid state (e.g., Ready To Send - RTS) for the HCA to process send requests.</p>
+                    </div>
+                     <div class="p-4 flow-step network-step rounded-md shadow">
+                        <h3 class="font-semibold text-lg text-blue-600">4. Physical Transmission</h3>
+                        <p class="text-stone-700">Fully formed packets are passed to the HCA's physical layer for encoding and transmission over the InfiniBand fabric (links and switches).</p>
+                    </div>
+                    <div class="p-4 flow-step sender-step rounded-md shadow">
+                        <h3 class="font-semibold text-lg text-amber-600">5. Signaling Completion (CQs)</h3>
+                        <p class="text-stone-700">After processing a WQE, the HCA posts a Completion Queue Element (CQE) to the associated Completion Queue (CQ). The CQE indicates success or failure of the operation. Applications poll the CQ or use event notifications to get this feedback. This asynchronicity allows applications to "fire and forget" requests, overlapping computation and communication.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="sendReceiveFlow" class="content-section bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold text-amber-700 mb-4">Visualizing the Send-Receive Flow (Mermaid Diagram)</h2>
+                <p class="mb-6 text-stone-700 leading-relaxed">
+                    This diagram illustrates the simplified request path for an InfiniBand send and receive operation using Mermaid.js. It shows the interaction between Applications, Verbs APIs, Kernel Drivers, Host Channel Adapters (HCAs), and the Network.
+                </p>
+                <div class="mermaid-container">
+                    <pre class="mermaid">
+sequenceDiagram
+    participant SA as Sender App
+    participant SVA as Sender Verbs API
+    participant SKD as Sender Kernel Driver
+    participant SHCA as Sender HCA
+    participant NET as Network Fabric
+    participant RHCA as Receiver HCA
+    participant RKD as Receiver Kernel Driver
+    participant RVA as Receiver Verbs API
+    participant RA as Receiver App
+
+    rect rgb(254, 243, 199)
+        note over SA, SHCA: Sender Side
+        SA->>SVA: 1. ibv_post_send(WR_send)
+        SVA->>SVA: 2. Prep WQE_send, To SQ, Ring Doorbell
+        SVA->>SKD: 3. Notify HCA
+        SKD->>SHCA: 4. Signal new WQE_send
+        SHCA->>SHCA: 5. Fetch WQE, Get Data, Segment, Build Packet(s)
+        SHCA->>NET: 6. Transmit Packet(s)
+    end
+
+    rect rgb(209, 250, 229)
+        note over RHCA, RA: Receiver Side (Prior Setup)
+        RA->>RVA: A. (Prior) ibv_post_recv(WR_recv) -> WQE_recv in RQ
+    end
+
+    NET->>RHCA: 7. Packet(s) Arrive
+
+    rect rgb(209, 250, 229)
+        note over RHCA, RA: Receiver Side (Processing)
+        RHCA->>RHCA: 8. Validate, Reassemble, Match WQE_recv
+        RHCA->>RA: 9. DMA Data to App Buffer (via MR)
+        RHCA->>RVA: 10. Post CQE_recv to Receiver CQ
+        RVA->>RA: 11. Polls/Event for CQE_recv, Process Data
+    end
+    
+    rect rgb(254, 243, 199)
+        note over SA, SHCA: Sender Side (Completion)
+        SHCA->>SVA: 12. (After ACK for RC / send done) Post CQE_send
+        SVA->>SA: 13. Polls/Event for CQE_send, Process Completion
+    end
+                    </pre>
+                </div>
+                <p class="mt-6 text-sm text-stone-600 leading-relaxed">
+                    This visualization highlights the layered architecture and the distinct roles of sender and receiver components in an InfiniBand communication.
+                </p>
+            </section>
+
+            <section id="transportModes" class="content-section bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold text-amber-700 mb-4">Understanding QP Transport Modes</h2>
+                <p class="mb-6 text-stone-700 leading-relaxed">
+                    InfiniBand QPs can be configured with different transport modes to offer varying levels of service for reliability, ordering, and connection management. Choosing the right mode is crucial for application performance.
+                </p>
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold text-amber-600 mb-3">Key Transport Modes:</h3>
+                    <ul class="list-disc list-inside space-y-2 text-stone-700">
+                        <li><strong>Reliable Connection (RC):</strong> Connection-oriented, reliable, in-order delivery (like TCP). Supports all RDMA ops. Common for MPI.</li>
+                        <li><strong>Unreliable Datagram (UD):</strong> Connectionless, unreliable (like UDP). Supports multicast. Lower overhead.</li>
+                        <li><strong>Unreliable Connection (UC):</strong> Connection-oriented, but unreliable. Supports RDMA Write.</li>
+                        <li><strong>eXtended Reliable Connection (XRC):</strong> Scalable RC, allowing one QP to communicate with multiple remote processes.</li>
+                        <li><strong>Reliable Datagram (RD):</strong> Defined, but generally not supported in hardware/software.</li>
+                    </ul>
+                </div>
+
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold text-amber-600 mb-3">RDMA Operations Supported by Mode:</h3>
+                    <p class="text-sm text-stone-600 mb-4">This chart shows the number of RDMA operation types (Write, Read, Atomic) supported by common transport modes.</p>
+                    <div class="chart-container bg-stone-50 p-4 rounded-lg shadow">
+                        <canvas id="transportModesChart"></canvas>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-semibold text-amber-600 mb-3">Transport Mode Feature Comparison:</h3>
+                <div class="overflow-x-auto shadow-md rounded-lg">
+                    <table class="min-w-full table-auto text-sm text-left text-stone-700 table">
+                        <thead class="text-xs uppercase">
+                            <tr>
+                                <th class="py-3 px-6">Feature</th>
+                                <th class="py-3 px-6">Reliable Connection (RC)</th>
+                                <th class="py-3 px-6">Unreliable Connection (UC)</th>
+                                <th class="py-3 px-6">Unreliable Datagram (UD)</th>
+                                <th class="py-3 px-6">eXtended RC (XRC)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Reliability</td>
+                                <td class="py-4 px-6">Yes</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">Yes</td>
+                            </tr>
+                            <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Connection</td>
+                                <td class="py-4 px-6">Yes (1-to-1 QP)</td>
+                                <td class="py-4 px-6">Yes (1-to-1 QP)</td>
+                                <td class="py-4 px-6">No (Many-to-Many QPs)</td>
+                                <td class="py-4 px-6">Yes (1-to-N processes)</td>
+                            </tr>
+                            <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Ordering</td>
+                                <td class="py-4 px-6">In-Order</td>
+                                <td class="py-4 px-6">In-Order (within conn.)</td>
+                                <td class="py-4 px-6">Not Guaranteed</td>
+                                <td class="py-4 px-6">In-Order</td>
+                            </tr>
+                             <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Max Msg Size</td>
+                                <td class="py-4 px-6">≈ 2GB</td>
+                                <td class="py-4 px-6">≈ 2GB</td>
+                                <td class="py-4 px-6">MTU</td>
+                                <td class="py-4 px-6">≈ 2GB</td>
+                            </tr>
+                            <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">RDMA Write</td>
+                                <td class="py-4 px-6">Yes</td>
+                                <td class="py-4 px-6">Yes</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">Yes</td>
+                            </tr>
+                            <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">RDMA Read</td>
+                                <td class="py-4 px-6">Yes</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">Yes</td>
+                            </tr>
+                             <tr class="border-b border-stone-200 hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Atomics</td>
+                                <td class="py-4 px-6">Yes</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">No</td>
+                                <td class="py-4 px-6">Yes</td>
+                            </tr>
+                             <tr class="hover:bg-stone-50">
+                                <td class="py-4 px-6 font-medium">Primary Use</td>
+                                <td class="py-4 px-6">MPI, General Reliable</td>
+                                <td class="py-4 px-6">Custom Protocols</td>
+                                <td class="py-4 px-6">Service Discovery, Scalable Unreliable Comm.</td>
+                                <td class="py-4 px-6">Scalable HPC</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                 <p class="mt-6 text-sm text-stone-600 leading-relaxed">
+                    RC offers strong guarantees but has overhead. UD is lightweight but unreliable. XRC aims to balance RC's reliability with better scalability for HPC. The choice depends on specific application needs.
+                </p>
+            </section>
+        </main>
+
+        <footer class="text-center mt-12 py-6 border-t border-stone-200">
+            <p class="text-sm text-stone-500">InfiniBand Explorer SPA &copy; 2024. Content based on provided InfiniBand documentation.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Enhanced Mermaid initialization for larger diagrams
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'base',
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 50,
+                actorMargin: 80,
+                width: 200,
+                height: 65,
+                boxMargin: 20,
+                boxTextMargin: 10,
+                noteMargin: 15,
+                messageMargin: 45,
+                mirrorActors: true,
+                bottomMarginAdj: 20,
+                actorFontSize: 28,
+                actorFontFamily: 'Inter, sans-serif',
+                actorFontWeight: 700,
+                noteFontSize: 24,
+                noteFontFamily: 'Inter, sans-serif',
+                messageFontSize: 22,
+                messageFontFamily: 'Inter, sans-serif',
+                messageFontWeight: 600
+            },
+            themeVariables: {
+                primaryColor: '#fef3c7',
+                primaryTextColor: '#92400e',
+                primaryBorderColor: '#d97706',
+                lineColor: '#78716c',
+                sectionBkgColor: '#fafaf9',
+                altSectionBkgColor: '#f5f5f4',
+                gridColor: '#e7e5e4',
+                secondaryColor: '#e7e5e4',
+                tertiaryColor: '#fafaf9'
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabs = document.querySelectorAll('.tab-button');
+            const contents = document.querySelectorAll('.content-section');
+            const accordions = document.querySelectorAll('.accordion-button');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    
+                    contents.forEach(content => content.classList.remove('active'));
+                    const activeContent = document.getElementById(tab.dataset.tab);
+                    activeContent.classList.add('active');
+
+                    if (activeContent.querySelector('.mermaid')) {
+                        setTimeout(() => { 
+                            mermaid.run({
+                                nodes: activeContent.querySelectorAll('.mermaid'),
+                            });
+                        },0);
+                    }
+                });
+            });
+
+            accordions.forEach(accordion => {
+                accordion.addEventListener('click', () => {
+                    accordion.classList.toggle('open');
+                    const icon = accordion.querySelector('span:last-child');
+                    if (icon) {
+                        icon.classList.toggle('rotate-180');
+                    }
+                });
+            });
+
+            const transportModesCtx = document.getElementById('transportModesChart');
+            if (transportModesCtx) {
+                new Chart(transportModesCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Reliable Connection (RC)', 'Unreliable Connection (UC)', 'Unreliable Datagram (UD)', 'eXtended RC (XRC)'],
+                        datasets: [{
+                            label: 'Number of RDMA Op Types Supported (Write, Read, Atomic)',
+                            data: [3, 1, 0, 3], 
+                            backgroundColor: [
+                                'rgba(217, 119, 6, 0.6)', 
+                                'rgba(124, 58, 237, 0.6)', 
+                                'rgba(219, 39, 119, 0.6)', 
+                                'rgba(5, 150, 105, 0.6)'  
+                            ],
+                            borderColor: [
+                                'rgba(217, 119, 6, 1)',
+                                'rgba(124, 58, 237, 1)',
+                                'rgba(219, 39, 119, 1)',
+                                'rgba(5, 150, 105, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1,
+                                    color: '#44403c' 
+                                },
+                                grid: {
+                                    color: '#e7e5e4' 
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                   color: '#44403c', 
+                                   font: {
+                                       size: 10 
+                                   },
+                                   autoSkip: true,
+                                   maxRotation: 0, 
+                                   minRotation: 0
+                                },
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false 
+                            },
+                            tooltip: {
+                                backgroundColor: '#292524', 
+                                titleColor: '#f5f5f4', 
+                                bodyColor: '#f5f5f4', 
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y + ' type(s)';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            const initialActiveContent = document.querySelector('.content-section.active');
+            if (initialActiveContent && initialActiveContent.querySelector('.mermaid')) {
+                 setTimeout(() => {
+                    mermaid.run({
+                        nodes: initialActiveContent.querySelectorAll('.mermaid'),
+                    });
+                },0);
+            }
+        });
+    </script>
+</body>
+</html>

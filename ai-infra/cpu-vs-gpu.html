@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU vs. GPU Tradeoffs in Modern GPU Clusters</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Infographic Narrative Plan:
+        1. Hero: Title & Hook.
+        2. Foundational Differences: Architecture (Philosophy, Cores, Memory).
+        3. Roles in Cluster: Orchestrator (CPU) vs. Accelerator (GPU), Collaborative Model.
+        4. Performance Face-Off: Key Metrics, AI/ML Workloads, HPC Workloads, Amdahl's Law.
+        5. Scaling & System Balance: CPU Bottlenecks, Interconnects (PCIe, NVLink, InfiniBand), CPU:GPU Ratios.
+        6. Economic & Operational Realities: Acquisition Costs, Power Consumption, Cooling.
+        7. Programming Landscape: CPU Dev vs. GPU Dev, Key Challenges.
+        8. Conclusion: Synergy is key.
+    -->
+    <!-- Visualization Choices:
+        - Architectural Philosophy: HTML/CSS cards with Unicode icons. Goal: Compare. Justification: Simple visual of processing. No SVG.
+        - Core Architecture (CPU vs GPU die): HTML/CSS block diagrams. Goal: Compare. Justification: Visual die allocation. No SVG.
+        - Memory Systems Comparison: Chart.js Donut charts for VRAM/RAM bandwidth/capacity emphasis + HTML/CSS list for features. Goal: Compare. Justification: Proportional data + feature list. Chart.js (Canvas) & HTML/CSS. No SVG.
+        - Collaborative Model: HTML/CSS Flow Chart. Goal: Organize. Justification: Shows interaction. No SVG/MermaidJS.
+        - Key Performance Metrics (Latency, Throughput, FLOPS): Chart.js Grouped Bar Chart. Goal: Compare. Justification: Direct metric comparison. Chart.js (Canvas). No SVG.
+        - AI Training Speedup: HTML/CSS Big Number. Goal: Inform. Justification: Emphasizes key benefit. No SVG.
+        - Amdahl's Law: Chart.js Stacked Bar Chart. Goal: Inform/Organize. Justification: Illustrates impact. Chart.js (Canvas). No SVG.
+        - Interconnect Speeds: Chart.js Horizontal Bar Chart. Goal: Compare. Justification: Bandwidth comparison. Chart.js (Canvas). No SVG.
+        - CPU:GPU Core Ratio: HTML/CSS Pictograph. Goal: Inform. Justification: Simple visual ratio. No SVG.
+        - Acquisition Cost (Unit vs. System): Chart.js Bar Charts. Goal: Compare. Justification: Cost disparity. Chart.js (Canvas). No SVG.
+        - Power Consumption (TDP): Chart.js Bar Chart. Goal: Compare. Justification: Power difference. Chart.js (Canvas). No SVG.
+        - Cooling Solutions: HTML/CSS cards with Unicode icons. Goal: Organize. Justification: Visual association. No SVG.
+        - Programming Ecosystems: HTML/CSS lists. Goal: Compare. Justification: Textual summary. No SVG.
+    -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F0F0F0; /* Light Background */
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .section-title {
+            font-size: 2.25rem; /* 36px */
+            font-weight: 700;
+            color: #1A1A1A; /* Dark Text */
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        .subsection-title {
+            font-size: 1.5rem; /* 24px */
+            font-weight: 600;
+            color: #FF6B6B; /* Primary Color */
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.5rem; /* 8px */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 1.5rem; /* 24px */
+            margin-bottom: 1.5rem; /* 24px */
+        }
+        .card-title {
+            font-size: 1.25rem; /* 20px */
+            font-weight: 600;
+            color: #1A1A1A;
+            margin-bottom: 0.5rem;
+        }
+        .card p, .card li {
+            color: #374151; /* Dark Gray text */
+            line-height: 1.6;
+        }
+        .highlight-stat {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #4ECDC4; /* Secondary Color */
+        }
+        .arrow {
+            font-size: 2rem;
+            color: #F7B731; /* Accent Color */
+            margin: 0 1rem;
+        }
+        .icon-placeholder {
+            font-size: 3rem;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            display: inline-block;
+        }
+        .cpu-icon-bg { background-color: #FFD1D1; color: #FF6B6B; } /* Lighter Primary */
+        .gpu-icon-bg { background-color: #A0E7E5; color: #4ECDC4; } /* Lighter Secondary */
+
+        .flow-chart-step {
+            background-color: #ffffff;
+            border: 2px solid #4ECDC4; /* Secondary */
+            color: #1A1A1A;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            min-width: 150px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .flow-chart-arrow {
+            font-size: 2rem;
+            color: #F7B731; /* Accent */
+            margin: auto 0.5rem;
+            align-self: center;
+        }
+        .legend-dot {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-[#1A1A1A] text-white py-12 px-4 text-center">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">CPU vs. GPU: Navigating the Tradeoffs</h1>
+        <p class="text-lg md:text-xl max-w-3xl mx-auto text-gray-300">
+            In modern GPU clusters for AI and HPC, understanding the distinct roles and tradeoffs between CPUs and GPUs is crucial for optimal performance and efficiency. This infographic explores these critical differences.
+        </p>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+
+        <section id="foundational-differences" class="mb-12">
+            <h2 class="section-title">I. Foundational Differences: Architecture at a Glance</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                CPUs and GPUs are architected with fundamentally different philosophies. CPUs are versatile generalists optimized for latency and complex serial tasks, while GPUs are parallel powerhouses built for throughput on specific, highly parallelizable computations.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+                <div class="card">
+                    <h3 class="card-title text-center"><span class="icon-placeholder cpu-icon-bg">🧠</span> CPU: The Generalist Brain</h3>
+                    <p class="text-center mb-4">Optimized for <strong>serial processing</strong> and complex control flow. Manages diverse tasks sequentially.</p>
+                    <div class="text-center mb-4">
+                        <p class="font-semibold">Analogy: The Head Chef 🧑‍🍳</p>
+                        <p>Manages numerous, diverse operations, ensuring each is handled correctly.</p>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded">
+                        <h4 class="font-semibold text-lg mb-2 text-[#FF6B6B]">Key CPU Architectural Traits:</h4>
+                        <ul class="list-disc list-inside space-y-1">
+                            <li><strong>Few, Powerful Cores (2-64+):</strong> Each core is highly sophisticated, handling complex instructions and logic.</li>
+                            <li><strong>Large Cache Hierarchy (L1, L2, L3):</strong> Significant die area dedicated to reducing latency for individual threads.</li>
+                            <li><strong>Complex Control Units:</strong> Manages branch prediction, out-of-order execution.</li>
+                            <li><strong>Memory:</strong> High-capacity DDR RAM (e.g., DDR5), focus on low-latency access for varied tasks.</li>
+                            <li><strong>Primary Goal:</strong> Minimize latency for single-thread performance and versatile task handling.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="card-title text-center"><span class="icon-placeholder gpu-icon-bg">🎮</span> GPU: The Parallel Workhorse</h3>
+                    <p class="text-center mb-4">Built for <strong>massively parallel processing</strong>. Executes many identical operations simultaneously.</p>
+                    <div class="text-center mb-4">
+                        <p class="font-semibold">Analogy: Army of Assistants 👷👷👷</p>
+                        <p>Each performs simple, repetitive tasks in unison, achieving massive cumulative output.</p>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded">
+                        <h4 class="font-semibold text-lg mb-2 text-[#4ECDC4]">Key GPU Architectural Traits:</h4>
+                        <ul class="list-disc list-inside space-y-1">
+                            <li><strong>Thousands of Simpler Cores:</strong> Grouped into Streaming Multiprocessors (SMs).</li>
+                            <li><strong>Specialized Units:</strong> Tensor Cores (AI math), RT Cores (ray tracing). Larger die area for execution units.</li>
+                            <li><strong>Smaller Caches, Shared Memory:</strong> L1/L2 caches per SM, plus software-managed shared memory for fast inter-thread communication within a block.</li>
+                            <li><strong>Memory:</strong> High-Bandwidth Memory (HBM/GDDR VRAM), focus on extreme bandwidth to feed cores.</li>
+                            <li><strong>Primary Goal:</strong> Maximize throughput for parallel computations, tolerating latency via massive threading.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-8">
+                <h3 class="subsection-title text-center">Memory Systems: Latency vs. Bandwidth</h3>
+                <p class="text-center text-gray-700 mb-6">CPU and GPU memory systems are tailored to their processing paradigms. CPUs prioritize low latency for general tasks with large capacity system RAM, while GPUs prioritize extreme bandwidth with on-package VRAM to sustain massive parallelism.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-semibold text-xl mb-2 text-[#FF6B6B]">CPU Memory System</h4>
+                        <ul class="list-disc list-inside space-y-1 text-gray-700">
+                            <li><strong>Hierarchy:</strong> Deep L1, L2, L3 caches.</li>
+                            <li><strong>Main Memory:</strong> DDR SDRAM (e.g., DDR5).
+                                <ul class="list-disc list-inside ml-4">
+                                    <li>Capacity: Hundreds of GB to Terabytes.</li>
+                                    <li>Bandwidth: Hundreds of GB/s.</li>
+                                </ul>
+                            </li>
+                            <li><strong>Focus:</strong> Low latency for individual accesses, large capacity for diverse datasets and OS.</li>
+                        </ul>
+                        <div class="chart-container mt-4" style="height: 200px; max-height: 250px;">
+                            <canvas id="cpuMemoryChart"></canvas>
+                        </div>
+                         <p class="text-sm text-center text-gray-600 mt-2">Illustrative: CPU memory focus on capacity and latency reduction via cache.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-xl mb-2 text-[#4ECDC4]">GPU Memory System</h4>
+                        <ul class="list-disc list-inside space-y-1 text-gray-700">
+                            <li><strong>Hierarchy:</strong> Registers, L1 cache/Shared Memory per SM, L2 cache.</li>
+                            <li><strong>Main Memory (VRAM):</strong> HBM/GDDR.
+                                <ul class="list-disc list-inside ml-4">
+                                    <li>Capacity: Tens to a few hundreds of GB.</li>
+                                    <li>Bandwidth: Several TB/s.</li>
+                                </ul>
+                            </li>
+                            <li><strong>Focus:</strong> Extreme bandwidth to feed parallel cores, latency hiding via threading.</li>
+                        </ul>
+                        <div class="chart-container mt-4" style="height: 200px; max-height: 250px;">
+                            <canvas id="gpuMemoryChart"></canvas>
+                        </div>
+                        <p class="text-sm text-center text-gray-600 mt-2">Illustrative: GPU memory focus on extreme bandwidth for parallel throughput.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="roles-synergy" class="mb-12">
+            <h2 class="section-title">II. Roles and Synergy in GPU Clusters</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                In GPU clusters, CPUs and GPUs are collaborators. The CPU orchestrates system functions and serial tasks, while the GPU accelerates the parallel, compute-intensive portions. This heterogeneous computing model is key to modern AI and HPC.
+            </p>
+            <div class="card">
+                <h3 class="subsection-title text-center">The Collaborative Model: GPU-Accelerated Computing</h3>
+                <p class="text-gray-700 mb-6 text-center">Applications typically run on the CPU, which offloads parallelizable, computationally intensive "kernels" to the GPU. Efficient data transfer and synchronization are vital.</p>
+                <div class="flex flex-col items-center space-y-4 md:space-y-0 md:flex-wrap md:flex-row md:justify-center md:items-stretch">
+                    <div class="flow-chart-step"><strong>CPU:</strong> Manages Workflow, OS, Serial Code</div>
+                    <div class="flow-chart-arrow hidden md:block">➡️</div>
+                    <div class="flow-chart-arrow block md:hidden self-center transform rotate-90">⬇️</div>
+                    <div class="flow-chart-step"><strong>CPU:</strong> Data Preparation & Preprocessing</div>
+                    <div class="flow-chart-arrow hidden md:block">➡️</div>
+                     <div class="flow-chart-arrow block md:hidden self-center transform rotate-90">⬇️</div>
+                    <div class="flex flex-col items-center">
+                       <div class="flow-chart-step bg-[#FFD1D1] border-[#FF6B6B]"><strong>GPU:</strong> Massively Parallel Kernel Execution</div>
+                       <p class="text-xs text-gray-600 mt-1">(Data & Kernel offloaded via PCIe)</p>
+                    </div>
+                    <div class="flow-chart-arrow hidden md:block">➡️</div>
+                    <div class="flow-chart-arrow block md:hidden self-center transform rotate-90">⬇️</div>
+                    <div class="flow-chart-step"><strong>CPU:</strong> Results Aggregation & Postprocessing</div>
+                     <div class="flow-chart-arrow hidden md:block">➡️</div>
+                    <div class="flow-chart-arrow block md:hidden self-center transform rotate-90">⬇️</div>
+                    <div class="flow-chart-step"><strong>CPU:</strong> Output / Further Logic</div>
+                </div>
+                <p class="text-sm text-gray-600 mt-6 text-center">This synergy leverages the strengths of both processors: CPU for control and versatility, GPU for raw parallel power.</p>
+            </div>
+        </section>
+
+        <section id="performance-tradeoffs" class="mb-12">
+            <h2 class="section-title">III. Performance Tradeoffs: Workload Suitability</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                Performance is not one-size-fits-all. CPUs offer low latency for single operations, while GPUs excel in throughput for parallel tasks. The "best" choice depends heavily on the workload.
+            </p>
+            <div class="card">
+                <h3 class="subsection-title text-center">Key Performance Metrics Compared</h3>
+                <p class="text-gray-700 mb-6 text-center">CPUs generally provide lower latency for sequential tasks, while GPUs deliver significantly higher throughput and raw FLOPS for parallel computations.</p>
+                <div class="chart-container" style="height: 350px; max-height:450px;">
+                    <canvas id="perfMetricsChart"></canvas>
+                </div>
+                <div class="flex justify-center mt-4 space-x-4">
+                    <span class="text-sm"><span class="legend-dot" style="background-color: #FF6B6B;"></span> CPU</span>
+                    <span class="text-sm"><span class="legend-dot" style="background-color: #4ECDC4;"></span> GPU</span>
+                </div>
+                <p class="text-sm text-gray-600 mt-2 text-center">Relative comparison: Lower values are better for Latency; higher values are better for Throughput & FLOPS.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                <div class="card">
+                    <h3 class="subsection-title">AI/ML Workloads</h3>
+                    <p class="text-gray-700 mb-4">Deep learning has been a major driver for GPU adoption.</p>
+                    <div class="mb-4">
+                        <h4 class="card-title text-[#FF6B6B]">Training (e.g., Transformers, CNNs)</h4>
+                        <p class="text-gray-700">Overwhelmingly GPU-dominated. GPUs offer massive speedups (often <span class="highlight-stat text-3xl">10x+</span>) over CPU-only training by parallelizing matrix math and convolutions. CPUs handle data loading and preprocessing.</p>
+                    </div>
+                    <div>
+                        <h4 class="card-title text-[#4ECDC4]">Inference</h4>
+                        <ul class="list-disc list-inside space-y-1 text-gray-700">
+                            <li><strong>Large Models (LLMs):</strong> GPUs preferred for low latency and high throughput.</li>
+                            <li><strong>Small/Latency-Critical Models:</strong> CPUs can be competitive and cost-effective if batching isn't feasible.</li>
+                            <li><strong>Batch Inference:</strong> GPUs excel due to parallel request handling.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="subsection-title">HPC Workloads & Amdahl's Law</h3>
+                    <p class="text-gray-700 mb-4">In HPC, suitability varies. Many simulations benefit from GPU acceleration, while some data analytics tasks remain CPU-centric.</p>
+                     <h4 class="card-title text-[#F7B731]">Amdahl's Law in Action</h4>
+                    <p class="text-gray-700 mb-4">Overall speedup from parallelization (on GPUs) is limited by the serial portion of the code (on CPUs). Optimizing both is crucial.</p>
+                    <div class="chart-container" style="height:250px; max-height:300px;">
+                        <canvas id="amdahlsLawChart"></canvas>
+                    </div>
+                    <div class="flex justify-center mt-4 space-x-4">
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #FF6B6B;"></span> Serial (CPU)</span>
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #4ECDC4;"></span> Parallel (GPU)</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2 text-center">Illustrative: GPU acceleration significantly reduces parallel task time, but serial CPU time limits overall speedup.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="scaling-balance" class="mb-12">
+            <h2 class="section-title">IV. Scalability, Interconnects, and System Balance</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                Cluster performance hinges on scaling components effectively and maintaining system balance. CPU limitations, GPU interconnects (intra-node and inter-node), and CPU-to-GPU ratios are critical design considerations.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="card">
+                    <h3 class="subsection-title">CPU as a Potential Bottleneck</h3>
+                    <p class="text-gray-700 mb-4">In multi-GPU systems, an under-provisioned CPU can starve GPUs:</p>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li><strong>PCIe Lanes:</strong> Insufficient lanes from CPU to GPUs reduce bandwidth (e.g., x16 ideal per GPU).</li>
+                        <li><strong>CPU Core Count/Speed:</strong> Needed for data prep, I/O, managing GPU tasks. Guideline: 4-6 physical CPU cores per GPU.</li>
+                        <li><strong>CPU Memory Bandwidth:</strong> Must feed data to PCIe bus efficiently.</li>
+                        <li><strong>Serial Code Performance (Amdahl's Law):</strong> Limits overall application speedup.</li>
+                    </ul>
+                    <div class="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-center">
+                        <p>⚠️ An imbalanced system leads to poor GPU utilization and wasted investment.</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="subsection-title">GPU Interconnects: The Data Highways</h3>
+                    <p class="text-gray-700 mb-4">High-speed communication is vital for GPU scaling:</p>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li><strong>Intra-Node (within server):</strong>
+                            <ul class="list-disc list-inside ml-4">
+                                <li><strong>NVIDIA NVLink:</strong> High-bandwidth, low-latency direct GPU-GPU link (e.g., NVLink 5.0: 1.8 TB/s per GPU). Bypasses PCIe for peer communication.</li>
+                            </ul>
+                        </li>
+                        <li><strong>Inter-Node (across servers):</strong>
+                            <ul class="list-disc list-inside ml-4">
+                                <li><strong>InfiniBand (e.g., NDR):</strong> Very low latency, high bandwidth (e.g., 400 Gbps/port), RDMA support.</li>
+                                <li><strong>High-Speed Ethernet with RoCE:</strong> RDMA over Ethernet (e.g., 400GbE), requires lossless configuration.</li>
+                            </ul>
+                        </li>
+                         <li><strong>GPUDirect RDMA:</strong> Allows NICs to directly access remote GPU memory, reducing latency.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card mt-8">
+                <h3 class="subsection-title text-center">Interconnect Bandwidth Comparison</h3>
+                <p class="text-gray-700 mb-6 text-center">Comparing typical maximum bidirectional bandwidths of key interconnect technologies. Higher is better.</p>
+                <div class="chart-container" style="height: 400px; max-height:500px;">
+                    <canvas id="interconnectSpeedsChart"></canvas>
+                </div>
+                 <p class="text-sm text-gray-600 mt-2 text-center">Note: NVLink values are per GPU aggregate; PCIe/Network are per link/port. Illustrative comparison.</p>
+            </div>
+             <div class="card mt-8 text-center">
+                <h3 class="subsection-title">CPU-to-GPU Ratios: A Balancing Act</h3>
+                <p class="text-gray-700 mb-4">Optimal ratios depend on workload, but general guidelines exist to ensure GPUs are well-supported:</p>
+                <div class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-8">
+                    <div class="text-center">
+                        <p class="text-2xl font-semibold">CPU Cores per GPU:</p>
+                        <p class="highlight-stat">4-6+</p>
+                        <p class="text-gray-600">(Physical Cores)</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-2xl font-semibold">System RAM vs. Total VRAM:</p>
+                        <p class="highlight-stat">≥ 2x</p>
+                        <p class="text-gray-600">(e.g., 1TB RAM for 512GB total VRAM)</p>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 mt-4">These ratios help prevent CPU bottlenecks in data preparation and management tasks.</p>
+            </div>
+        </section>
+
+        <section id="economic-operational" class="mb-12">
+            <h2 class="section-title">V. Economic & Operational Realities</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                Beyond performance, cost, power, and cooling are major factors. GPUs are expensive and power-hungry, impacting Total Cost of Ownership (TCO).
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="card">
+                    <h3 class="subsection-title">Acquisition Costs</h3>
+                    <p class="text-gray-700 mb-4">GPUs are significantly more expensive per unit than CPUs. A multi-GPU server represents a large capital investment.</p>
+                    <div class="chart-container" style="height:300px; max-height:350px;">
+                        <canvas id="acquisitionCostChart"></canvas>
+                    </div>
+                    <div class="flex justify-center mt-4 space-x-4">
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #FF6B6B;"></span> CPU Component</span>
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #4ECDC4;"></span> GPU Component/Server</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-2 text-center">Illustrative: GPU costs dominate high-performance server configurations.</p>
+                </div>
+                <div class="card">
+                    <h3 class="subsection-title">Power Consumption & Cooling</h3>
+                    <p class="text-gray-700 mb-4">Data center GPUs have high TDPs (Thermal Design Power), demanding robust cooling.</p>
+                    <div class="chart-container" style="height:200px; max-height:250px;">
+                        <canvas id="powerConsumptionChart"></canvas>
+                    </div>
+                     <div class="flex justify-center mt-4 space-x-4">
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #FF6B6B;"></span> Typical Server CPU TDP</span>
+                        <span class="text-sm"><span class="legend-dot" style="background-color: #4ECDC4;"></span> High-End Data Center GPU TDP</span>
+                    </div>
+                    <p class="text-gray-700 mt-6"><strong>Cooling Solutions:</strong></p>
+                    <div class="flex justify-around mt-2">
+                        <div class="text-center">
+                            <span class="icon-placeholder bg-blue-100 text-blue-500">🌬️</span>
+                            <p class="font-semibold">Air Cooling</p>
+                            <p class="text-sm text-gray-600">Traditional, for lower density racks (<20-30kW).</p>
+                        </div>
+                        <div class="text-center">
+                            <span class="icon-placeholder bg-green-100 text-green-500">💧</span>
+                            <p class="font-semibold">Liquid Cooling</p>
+                            <p class="text-sm text-gray-600">Essential for high-density GPU clusters (>60kW), improves PUE.</p>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-4">High power draw and cooling needs significantly impact operational expenses (OpEx).</p>
+                </div>
+            </div>
+             <div class="card mt-8 text-center">
+                <h3 class="subsection-title">Performance-per-Dollar & Performance-per-Watt</h3>
+                <p class="text-gray-700 mb-4">Despite high costs, GPUs can offer better value for specific workloads if highly utilized:</p>
+                <ul class="list-none space-y-2 text-gray-700">
+                    <li><strong class="text-[#FF6B6B]">CPUs:</strong> Better for tasks not accelerated by GPUs, or with tight budget/power constraints. Lower OpEx per unit.</li>
+                    <li><strong class="text-[#4ECDC4]">GPUs:</strong> Can achieve superior performance-per-dollar/watt on parallel tasks by completing work much faster, reducing total energy. High utilization is key.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="programming-landscape" class="mb-12">
+            <h2 class="section-title">VI. Programming Models & Development</h2>
+            <p class="text-center text-lg text-gray-700 mb-8 max-w-3xl mx-auto">
+                Developing for CPUs benefits from mature, general-purpose tools. GPU programming requires specialized frameworks and a parallel mindset, though high-level AI libraries abstract much of this.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="card">
+                    <h3 class="subsection-title text-[#FF6B6B]">CPU Development</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li><strong>Languages:</strong> C, C++, Python, Java, Fortran, etc.</li>
+                        <li><strong>Parallelism:</strong> Multi-threading (pthreads, std::thread), OpenMP, MPI.</li>
+                        <li><strong>Ecosystem:</strong> Mature, extensive libraries, familiar tools, large developer base.</li>
+                        <li><strong>Focus:</strong> General-purpose application development.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3 class="subsection-title text-[#4ECDC4]">GPU Programming</h3>
+                     <ul class="list-disc list-inside space-y-1 text-gray-700">
+                        <li><strong>Frameworks:</strong>
+                            <ul class="list-disc list-inside ml-4">
+                                <li><strong>NVIDIA CUDA:</strong> Dominant for NVIDIA GPUs, rich libraries (cuDNN, NCCL).</li>
+                                <li><strong>OpenCL/SYCL:</strong> Open standards for heterogeneous platforms (CPUs, GPUs from various vendors).</li>
+                                <li><strong>OpenMP Target Offload:</strong> Directive-based offloading.</li>
+                            </ul>
+                        </li>
+                        <li><strong>High-Level AI Frameworks:</strong> PyTorch, TensorFlow, JAX abstract low-level details.</li>
+                        <li><strong>Challenges:</strong> Explicit parallelism, memory management (host-device transfers, coalescing), thread synchronization, kernel optimization (occupancy, divergence), debugging complexity.</li>
+                        <li><strong>Focus:</strong> Accelerating parallel kernels, often with a steeper learning curve for low-level optimization.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="conclusion" class="py-12 bg-gradient-to-r from-[#FF6B6B] to-[#F7B731] text-white rounded-lg shadow-xl">
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-6">VII. Conclusion: Synergy is Key</h2>
+            <p class="text-center text-lg md:text-xl max-w-3xl mx-auto px-4">
+                The CPU-GPU relationship in modern clusters is one of specialized synergy. CPUs orchestrate and manage, while GPUs accelerate demanding parallel tasks.
+                Achieving optimal performance and TCO requires a deep understanding of workloads, careful system balance (CPU, GPU, memory, interconnects), and efficient software.
+                As AI and HPC evolve, intelligently leveraging the distinct strengths of both processors will remain paramount for innovation.
+            </p>
+        </section>
+    </main>
+
+    <footer class="text-center py-8 text-sm text-gray-600">
+        <p>Infographic based on the report "Navigating the CPU-GPU Tradeoffs in Modern GPU Clusters."</p>
+        <p>&copy; 2025 Data Visualization Insights. For illustrative purposes only.</p>
+    </footer>
+
+    <script>
+        const primaryColor = '#FF6B6B';
+        const secondaryColor = '#4ECDC4';
+        const accentColor = '#F7B731';
+        const mutedGray = '#6B7280';
+        const lightGray = '#D1D5DB';
+
+        function wrapLabel(str, maxWidth) {
+            if (str.length <= maxWidth) return str;
+            const words = str.split(' ');
+            let currentLine = '';
+            const lines = [];
+            for (const word of words) {
+                if ((currentLine + word).length > maxWidth && currentLine.length > 0) {
+                    lines.push(currentLine.trim());
+                    currentLine = word + ' ';
+                } else {
+                    currentLine += word + ' ';
+                }
+            }
+            lines.push(currentLine.trim());
+            return lines;
+        }
+
+        const tooltipTitleCallback = function(tooltipItems) {
+            const item = tooltipItems[0];
+            let label = item.chart.data.labels[item.dataIndex];
+            if (Array.isArray(label)) {
+                return label.join(' ');
+            }
+            return label;
+        };
+
+        const commonChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { title: tooltipTitleCallback },
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    titleFont: { size: 14 },
+                    bodyFont: { size: 12 },
+                    padding: 10,
+                    cornerRadius: 4,
+                }
+            },
+            scales: {
+                x: { 
+                    ticks: { color: mutedGray, font: { size: 10 } }, 
+                    grid: { color: lightGray, drawOnChartArea: false } 
+                },
+                y: { 
+                    ticks: { color: mutedGray, font: { size: 10 } }, 
+                    grid: { color: lightGray } 
+                }
+            }
+        };
+        
+        const commonHorizontalChartOptions = {
+            ...commonChartOptions,
+            indexAxis: 'y',
+             scales: {
+                x: { 
+                    ticks: { color: mutedGray, font: { size: 10 } }, 
+                    grid: { color: lightGray } 
+                },
+                y: { 
+                    ticks: { color: mutedGray, font: { size: 10, weight: '600' }, autoSkip: false }, 
+                    grid: { color: lightGray, drawOnChartArea: false } 
+                }
+            }
+        };
+
+
+        new Chart(document.getElementById('cpuMemoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Cache (L1-L3)', 'Cores & Control', 'System RAM Access'],
+                datasets: [{
+                    data: [35, 25, 40],
+                    backgroundColor: [primaryColor, '#FF8E72', '#FFAD87'],
+                    borderColor: '#F0F0F0',
+                    borderWidth: 2
+                }]
+            },
+            options: { ...commonChartOptions, cutout: '60%' }
+        });
+
+        new Chart(document.getElementById('gpuMemoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Execution Units (Cores, Tensor etc.)', 'VRAM & On-Chip Memory Access', 'Control & Other'],
+                datasets: [{
+                    data: [60, 30, 10],
+                    backgroundColor: [secondaryColor, '#70DFDF', '#A0E7E5'],
+                    borderColor: '#F0F0F0',
+                    borderWidth: 2
+                }]
+            },
+            options: { ...commonChartOptions, cutout: '60%' }
+        });
+
+        new Chart(document.getElementById('perfMetricsChart'), {
+            type: 'bar',
+            data: {
+                labels: [wrapLabel('Latency (Lower is Better)',16), wrapLabel('Throughput (Higher is Better)',16), wrapLabel('FLOPS (Peak, Higher is Better)',16)],
+                datasets: [
+                    {
+                        label: 'CPU',
+                        data: [20, 30, 25], 
+                        backgroundColor: primaryColor,
+                        borderColor: primaryColor,
+                        borderWidth: 1,
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'GPU',
+                        data: [70, 90, 85],
+                        backgroundColor: secondaryColor,
+                        borderColor: secondaryColor,
+                        borderWidth: 1,
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: { ...commonChartOptions, plugins: { ...commonChartOptions.plugins, legend: { display: false } } }
+        });
+
+        new Chart(document.getElementById('amdahlsLawChart'), {
+            type: 'bar',
+            data: {
+                labels: ['CPU Only Execution', wrapLabel('GPU Accelerated Execution', 20)],
+                datasets: [
+                    {
+                        label: 'Serial (CPU)',
+                        data: [100, 20], 
+                        backgroundColor: primaryColor,
+                        borderColor: primaryColor,
+                        borderWidth: 1,
+                        stack: 'Stack 0',
+                    },
+                    {
+                        label: 'Parallel (GPU)',
+                        data: [0, 30], 
+                        backgroundColor: secondaryColor,
+                        borderColor: secondaryColor,
+                        borderWidth: 1,
+                        stack: 'Stack 0',
+                    }
+                ]
+            },
+            options: {
+                ...commonChartOptions,
+                scales: {
+                    x: { stacked: true, ticks: { color: mutedGray, font: {size: 10} }, grid: { drawOnChartArea: false } },
+                    y: { stacked: true, title: { display: true, text: 'Relative Time', color: mutedGray }, ticks: { color: mutedGray, font: {size: 10} }, grid: { color: lightGray } }
+                },
+                plugins: { ...commonChartOptions.plugins, legend: { display: false } }
+            }
+        });
+        
+        const interconnectLabels = [
+            wrapLabel('PCIe 4.0 x16', 20), 
+            wrapLabel('PCIe 5.0 x16', 20), 
+            wrapLabel('InfiniBand NDR (400G Port)', 25),
+            wrapLabel('Ethernet 400GbE (RoCE Port)', 25),
+            wrapLabel('NVIDIA NVLink 4.0 (per H100 GPU)', 25),
+            wrapLabel('NVIDIA NVLink 5.0 (per Blackwell GPU)', 30)
+        ];
+        new Chart(document.getElementById('interconnectSpeedsChart'), {
+            type: 'bar',
+            data: {
+                labels: interconnectLabels,
+                datasets: [{
+                    label: 'Max Bidirectional Bandwidth (GB/s - illustrative)',
+                    data: [64, 128, 50, 50, 900, 1800],
+                    backgroundColor: [primaryColor, '#FF8E72', accentColor, '#FFC86B', secondaryColor, '#2E8B57'],
+                    borderColor: '#F0F0F0',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: commonHorizontalChartOptions
+        });
+
+        new Chart(document.getElementById('acquisitionCostChart'), {
+            type: 'bar',
+            data: {
+                labels: [wrapLabel('Single Server CPU Unit', 15), wrapLabel('Single Data Center GPU Unit', 15), wrapLabel('Typical CPU Server (Dual Socket)', 20), wrapLabel('Typical 8-GPU Server', 15)],
+                datasets: [{
+                    label: 'Relative Acquisition Cost (Illustrative)',
+                    data: [5, 30, 15, 250], 
+                    backgroundColor: [primaryColor, secondaryColor, primaryColor, secondaryColor],
+                    borderColor: [primaryColor, secondaryColor, primaryColor, secondaryColor],
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+             options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { title: { display: true, text: 'Relative Cost Units', color: mutedGray } } } }
+        });
+
+        new Chart(document.getElementById('powerConsumptionChart'), {
+            type: 'bar',
+            data: {
+                labels: [wrapLabel('Typical Server CPU TDP', 20), wrapLabel('High-End Data Center GPU TDP', 25)],
+                datasets: [{
+                    label: 'Thermal Design Power (Watts - Illustrative)',
+                    data: [250, 700], 
+                    backgroundColor: [primaryColor, secondaryColor],
+                    borderColor: [primaryColor, secondaryColor],
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barPercentage: 0.5,
+                }]
+            },
+            options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { title: { display: true, text: 'TDP (Watts)', color: mutedGray } } } }
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern AI Infrastructure: Performance Landscape</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <!-- Application Structure Plan:
+        The application is structured as a single-page dashboard.
+        1. Header: Title and introduction.
+        2. Interactive Controls:
+            a. Dropdown to select a component for focused analysis.
+            b. Dropdown to select chart scale type (Logarithmic/Linear) for Size and Bandwidth charts, stacked vertically.
+        3. Main Visualization Area: Three bar charts (Size, Bandwidth, Latency). Size and Bandwidth charts can switch between log and linear scales. Latency chart remains logarithmic. Data labels are on bars, positioned to the right. Chart titles have scale type on a new line.
+        4. Component Details Section: Dynamic panel with selected component's info.
+        5. Data Table Section: Sortable HTML table of all components.
+        User Flow: Users select a component and can toggle scale type for Size/Bandwidth charts to better visualize data ranges. This structure enhances usability by offering flexible data representation.
+    -->
+    <!-- Visualization & Content Choices:
+        - Component Data (Size, BW, Latency) -> Goal: Compare/Inform/Explore -> Viz: Bar Charts (Log/Linear selectable for Size/BW, Log for Latency, Datalabels adjusted for clarity), Details Panel, Table Row -> Interaction: Highlight on select, Scale type select, Tooltip -> Justification: Flexible data visualization, direct value display to the right of bars, contextual details -> Library/Method: Chart.js, chartjs-plugin-datalabels, HTML+JS
+    -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 400px; 
+            max-height: 450px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 500px;
+                max-height: 550px;
+            }
+        }
+        @media (min-width: 1024px) {
+            .chart-container {
+                height: 600px;
+                max-height: 650px;
+            }
+        }
+        .table-sortable th:hover {
+            cursor: pointer;
+            background-color: #fed7aa; /* amber-300 */
+        }
+        .highlighted-row {
+            background-color: #fdba74; /* orange-300 */
+            font-weight: bold;
+        }
+        .tooltip-custom {
+            background-color: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            pointer-events: none;
+        }
+        .chart-title-scale {
+            display: block;
+            font-size: 0.8rem; /* Slightly smaller for subtitle */
+            font-weight: normal;
+            color: #a16207; /* amber-700, slightly muted */
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-orange-50 text-stone-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-orange-700 mb-2">Modern AI Infrastructure: Performance Landscape</h1>
+            <p class="text-stone-600 text-sm sm:text-base max-w-3xl mx-auto">
+                Explore the typical performance characteristics (size, bandwidth, latency) of key components in modern Artificial Intelligence (AI) hardware stacks. Understanding these metrics is crucial for designing efficient AI systems. Interact with the charts and table below to compare different components.
+            </p>
+        </header>
+
+        <section id="controls" class="mb-8 p-6 bg-white rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold text-orange-700 mb-3">Explore Components & Chart Settings</h2>
+            <div class="grid grid-cols-1 gap-4"> <div>
+                    <label for="componentSelect" class="block text-sm font-medium text-stone-700 mb-1">Highlight Component:</label>
+                    <select id="componentSelect" class="w-full p-2 border border-orange-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500 text-sm">
+                        <option value="">-- Select a Component --</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="scaleTypeSelect" class="block text-sm font-medium text-stone-700 mb-1">Chart Scale Type (Size & Bandwidth):</label>
+                    <select id="scaleTypeSelect" class="w-full p-2 border border-orange-300 rounded-md shadow-sm focus:ring-teal-500 focus:border-teal-500 text-sm">
+                        <option value="log">Logarithmic Scale</option>
+                        <option value="linear">Linear Scale</option>
+                    </select>
+                </div>
+            </div>
+             <p class="text-xs text-stone-500 mt-3">Select a component to highlight it. Use the scale type selector to change how Size and Bandwidth data are displayed. Latency chart always uses a logarithmic scale.</p>
+        </section>
+
+        <section id="charts" class="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h3 id="sizeChartTitle" class="text-lg font-semibold text-orange-700 mb-2 text-center">Typical Size <span class="chart-title-scale">(Log Scale)</span></h3>
+                <p class="text-xs text-stone-500 mb-3 text-center">Storage capacity. Note: Not all components have a 'size' (e.g., interconnects).</p>
+                <div class="chart-container">
+                    <canvas id="sizeChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h3 id="bandwidthChartTitle" class="text-lg font-semibold text-orange-700 mb-2 text-center">Typical Bandwidth <span class="chart-title-scale">(Log Scale)</span></h3>
+                 <p class="text-xs text-stone-500 mb-3 text-center">Rate of data transfer (higher is better).</p>
+                <div class="chart-container">
+                    <canvas id="bandwidthChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md">
+                <h3 id="latencyChartTitle" class="text-lg font-semibold text-orange-700 mb-2 text-center">Typical Latency <span class="chart-title-scale">(Log Scale)</span></h3>
+                <p class="text-xs text-stone-500 mb-3 text-center">Time delay to access data (lower is better).</p>
+                <div class="chart-container">
+                    <canvas id="latencyChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section id="componentDetails" class="mb-8 p-6 bg-white rounded-lg shadow-md min-h-[200px]">
+            <h2 class="text-xl font-semibold text-orange-700 mb-3">Component Details</h2>
+            <div id="detailsContent" class="text-stone-700">
+                <p class="italic">Select a component from the dropdown or table to see its details here.</p>
+            </div>
+        </section>
+
+        <section id="dataTableSection" class="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
+            <h2 class="text-xl font-semibold text-orange-700 mb-3">Comparative Data Table</h2>
+            <p class="text-stone-600 mb-4 text-sm">Click on a row to highlight the component in the charts and details panel. Click on table headers to sort.</p>
+            <table id="infraTable" class="min-w-full divide-y divide-orange-200 table-sortable text-sm">
+                <thead class="bg-orange-100">
+                    <tr>
+                        <th scope="col" class="px-4 py-2 text-left font-semibold text-orange-700" data-sort="name">Component Name</th>
+                        <th scope="col" class="px-4 py-2 text-left font-semibold text-orange-700" data-sort="size">Size</th>
+                        <th scope="col" class="px-4 py-2 text-left font-semibold text-orange-700" data-sort="bandwidth">Bandwidth (GB/s)</th>
+                        <th scope="col" class="px-4 py-2 text-left font-semibold text-orange-700" data-sort="latency">Latency (ns)</th>
+                    </tr>
+                </thead>
+                <tbody id="infraTableBody" class="bg-white divide-y divide-orange-100">
+                </tbody>
+            </table>
+        </section>
+
+        <footer class="text-center mt-12 py-4 border-t border-orange-200">
+            <p class="text-xs text-stone-500">
+                Data presented are typical or representative values for illustrative purposes and can vary significantly based on specific hardware, configuration, and workload.
+                This is a conceptual infographic SPA.
+            </p>
+        </footer>
+    </div>
+
+<script>
+const infraData = [
+    { name: "CPU L1 Cache/core", sizeBytes: 65536, bandwidthGBs: 2000, latencyNs: 1, category: "CPU Cache", icon: "💻", description: "Fastest memory cache integrated directly into each CPU core, holding frequently accessed data and instructions." },
+    { name: "CPU L2 Cache/core", sizeBytes: 1048576, bandwidthGBs: 1000, latencyNs: 5, category: "CPU Cache", icon: "💻", description: "Slightly larger and slower than L1, shared by one or a few CPU cores, acts as a secondary buffer." },
+    { name: "CPU L3 Cache/shared", sizeBytes: 67108864, bandwidthGBs: 1500, latencyNs: 25, category: "CPU Cache", icon: "💻", description: "Largest on-die CPU cache, shared among all CPU cores, reduces main memory accesses." },
+    { name: "CPU DDR5 Memory", sizeBytes: 137438953472, bandwidthGBs: 100, latencyNs: 80, category: "System Memory", icon: "💾", description: "Main system Random Access Memory (RAM) used by the CPU for active programs and data." },
+    { name: "GPU L1/Shared Mem", sizeBytes: 131072, bandwidthGBs: 12000, latencyNs: 30, category: "GPU Cache", icon: "🎮", description: "Fast on-chip memory within each GPU Streaming Multiprocessor (SM), configurable as L1 cache and/or software-managed shared memory." },
+    { name: "GPU L2 Cache/Shared", sizeBytes: 50331648, bandwidthGBs: 4000, latencyNs: 100, category: "GPU Cache", icon: "🎮", description: "Larger cache shared across GPU SMs, helps reduce access to slower GPU HBM memory." },
+    { name: "GPU HBM3 Memory/GPU", sizeBytes: 85899345920, bandwidthGBs: 3000, latencyNs: 100, category: "GPU Memory", icon: "🎮", description: "High Bandwidth Memory stacked directly on the GPU package, providing massive bandwidth for parallel processing." },
+    { name: "PCIe 4.0 x16", sizeBytes: 0, bandwidthGBs: 32, latencyNs: 300, category: "Interconnect", icon: "🔗", description: "Peripheral Component Interconnect Express, a high-speed interface connecting GPUs, NVMe drives, and other peripherals to the CPU." },
+    { name: "PCIe 5.0 x16", sizeBytes: 0, bandwidthGBs: 64, latencyNs: 250, category: "Interconnect", icon: "🔗", description: "Newer generation of PCIe offering double the bandwidth of PCIe 4.0 for faster CPU-peripheral communication." },
+    { name: "PCIe 6.0 x16", sizeBytes: 0, bandwidthGBs: 128, latencyNs: 200, category: "Interconnect", icon: "🔗", description: "Future PCIe standard aiming to double bandwidth again, crucial for next-gen AI accelerators." },
+    { name: "NVLink 5.0/x18", sizeBytes: 0, bandwidthGBs: 1800, latencyNs: 60, category: "Interconnect", icon: "🔗", description: "Proprietary high-speed, direct GPU-to-GPU interconnect developed by NVIDIA for multi-GPU systems." },
+    { name: "InfiniBand NDR", sizeBytes: 0, bandwidthGBs: 50, latencyNs: 3000, category: "Network", icon: "🌐", description: "High-performance networking fabric common in HPC and AI clusters for inter-node communication, offering low latency and high bandwidth (e.g., 400Gbps per port)." },
+    { name: "RoCE v2 400GbE", sizeBytes: 0, bandwidthGBs: 50, latencyNs: 6000, category: "Network", icon: "🌐", description: "RDMA over Converged Ethernet, allows direct memory access between servers over standard Ethernet, reducing CPU overhead for network communication (e.g., 400Gbps Ethernet)." },
+    { name: "NVMe SSD Gen5", sizeBytes: 2199023255552, bandwidthGBs: 14, latencyNs: 60000, category: "Storage", icon: "💽", description: "Non-Volatile Memory Express Solid State Drive, high-speed local storage offering significantly faster performance than traditional SSDs." },
+    { name: "NVMe-oF (RDMA)", sizeBytes: 0, bandwidthGBs: 50, latencyNs: 125000, category: "Network Storage", icon: "☁️", description: "NVMe over Fabrics allows accessing NVMe storage devices over a network (e.g., InfiniBand or RoCE) with RDMA, extending NVMe performance across a data center." }
+];
+
+let sizeChartInstance, bandwidthChartInstance, latencyChartInstance;
+let currentSortColumn = '';
+let currentSortDirection = 'asc';
+let currentScaleType = 'log'; // Default scale type for Size and Bandwidth
+
+const baseBarColor = 'rgba(251, 191, 36, 0.7)';
+const highlightBarColor = 'rgba(239, 68, 68, 0.9)';
+const baseBorderColor = 'rgba(251, 191, 36, 1)';
+const highlightBorderColor = 'rgba(239, 68, 68, 1)';
+const dataLabelColor = 'rgba(51, 51, 51, 0.85)';
+
+function formatSize(bytes) {
+    if (bytes === null || bytes === undefined || bytes <= 0) return 'N/A';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    if (i < 0) return parseFloat(bytes.toFixed(1)) + ' Bytes'; // Handles values less than 1KB
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatBandwidth(gbs) {
+    if (gbs === null || gbs === undefined || gbs <= 0) return 'N/A';
+    if (gbs >= 1000) {
+        return parseFloat((gbs / 1000).toFixed(1)) + ' TB/s';
+    }
+    return parseFloat(gbs.toFixed(1)) + ' GB/s';
+}
+
+function formatLatency(ns) {
+    if (ns === null || ns === undefined || ns <= 0) return 'N/A';
+    if (ns < 1000) {
+        return parseFloat(ns.toFixed(1)) + ' ns';
+    }
+    return parseFloat((ns / 1000).toFixed(1)) + ' µs';
+}
+
+function populateDropdown() {
+    const select = document.getElementById('componentSelect');
+    infraData.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.name;
+        option.textContent = item.name;
+        select.appendChild(option);
+    });
+}
+
+function createChart(ctx, label, data, dataLabels, chartType = 'bar', isLog = false, xAxisLabel = '', highlightName = null) {
+    const backgroundColors = dataLabels.map(name => name === highlightName ? highlightBarColor : baseBarColor);
+    const borderColors = dataLabels.map(name => name === highlightName ? highlightBorderColor : baseBorderColor);
+
+    const chartConfig = {
+        type: chartType,
+        data: {
+            labels: dataLabels.map(l => wrapLabel(l, 16)),
+            datasets: [{
+                label: label,
+                data: data,
+                backgroundColor: backgroundColors,
+                borderColor: borderColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            categoryPercentage: 0.9,
+            barPercentage: 0.7,
+            layout: { 
+                padding: {
+                    right: 50 
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: !isLog,
+                    type: isLog ? 'logarithmic' : 'linear',
+                    title: {
+                        display: true,
+                        text: xAxisLabel,
+                        font: { size: 10 }
+                    },
+                    afterBuildTicks: function(scale) {
+                        // Only apply custom ticks for Size chart in log scale
+                        if (isLog && (xAxisLabel.includes('Size') || xAxisLabel.includes('Capacity'))) {
+                            const customTicks = [65536, 1048576, 67108864, 1073741824, 68719476736, 1099511627776];
+                            scale.ticks = customTicks.map(value => ({ value }));
+                        }
+                    },
+                    ticks: {
+                        font: { size: 10 },
+                        maxTicksLimit: isLog && label === 'Size' ? 8 : undefined,
+                        callback: function(value, index, values) {
+                            const axisTitle = this.chart.options.scales.x.title.text;
+                            if (value <= 0) return null; 
+
+                            if (isLog) {
+                                const logValue = Math.log10(value);
+                                if (axisTitle.includes('Latency')) {
+                                    if (value === 1 || value === 10 || value === 100 || value === 1000 || value === 10000 || value === 100000) return formatLatency(value);
+                                } else if (axisTitle.includes('Size') || axisTitle.includes('Capacity')) {
+                                    // For Size chart, format the custom tick values
+                                    return formatSize(value);
+                                } else if (axisTitle.includes('Bandwidth')) {
+                                    // Show only clean powers of 10 for bandwidth in log scale
+                                    if (Number.isInteger(logValue) && value >= 1) {
+                                        return formatBandwidth(value);
+                                    }
+                                    return null;
+                                }
+                                return null; 
+                            } else { 
+                                if (this.getLabelForValue(value) !== undefined) {
+                                    if (axisTitle.includes('Size') || axisTitle.includes('Capacity')) return formatSize(value);
+                                    if (axisTitle.includes('Bandwidth')) return formatBandwidth(value);
+                                    return value; 
+                                }
+                            }
+                            return null;
+                        }
+                    }
+                },
+                y: {
+                    ticks: {
+                        font: { size: 12 },
+                        autoSkip: false
+                    }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    titleFont: { weight: 'bold' },
+                    bodyFont: { size: 12 },
+                    padding: 10,
+                    callbacks: {
+                        label: function(context) {
+                            let val = context.raw;
+                            if (val <= 0) return null;
+                            if (context.dataset.label === 'Size') return `Size: ${formatSize(val)}`;
+                            if (context.dataset.label === 'Bandwidth') return `Bandwidth: ${formatBandwidth(val)}`;
+                            if (context.dataset.label === 'Latency') return `Latency: ${formatLatency(val)}`;
+                            return val;
+                        }
+                    }
+                },
+                datalabels: {
+                    color: dataLabelColor,
+                    anchor: 'end', 
+                    align: 'right', 
+                    offset: 8,    
+                    font: {
+                        size: 9,   
+                        weight: 'normal'
+                    },
+                    formatter: function(value, context) {
+                        if (value <= 0) return null;
+                        const chartLabel = context.dataset.label;
+                        if (chartLabel === 'Size') return formatSize(value);
+                        if (chartLabel === 'Bandwidth') return formatBandwidth(value);
+                        if (chartLabel === 'Latency') return formatLatency(value);
+                        return null;
+                    },
+                    display: function(context) {
+                        if (context.chart.options.scales.x.type === 'logarithmic') {
+                            const barValue = context.dataset.data[context.dataIndex];
+                            return barValue > 0;
+                        }
+                        return context.dataset.data[context.dataIndex] > 0; 
+                    }
+                }
+            }
+        }
+    };
+
+    if (isLog) {
+        const nonZeroData = data.filter(d => d > 0);
+        if (nonZeroData.length > 0) {
+            chartConfig.options.scales.x.min = Math.min(...nonZeroData) * 0.5; 
+        } else {
+            chartConfig.options.scales.x.min = 0.1; 
+        }
+    }
+    return new Chart(ctx, chartConfig);
+}
+
+function wrapLabel(label, maxLength) {
+    if (label.length <= maxLength) return label;
+    const words = label.split(' ');
+    let currentLine = '';
+    const lines = [];
+    for (const word of words) {
+        if ((currentLine + word).length > maxLength) {
+            lines.push(currentLine.trim());
+            currentLine = '';
+        }
+        currentLine += word + ' ';
+    }
+    lines.push(currentLine.trim());
+    return lines;
+}
+
+
+function updateCharts(highlightName = null) {
+    const isLogScale = currentScaleType === 'log';
+
+    const sizeChartTitleEl = document.getElementById('sizeChartTitle');
+    const bandwidthChartTitleEl = document.getElementById('bandwidthChartTitle');
+    // Latency chart title is static in HTML as it's always log
+
+    sizeChartTitleEl.innerHTML = `Typical Size <span class="chart-title-scale">(${isLogScale ? 'Log' : 'Linear'} Scale)</span>`;
+    bandwidthChartTitleEl.innerHTML = `Typical Bandwidth <span class="chart-title-scale">(${isLogScale ? 'Log' : 'Linear'} Scale)</span>`;
+
+
+    const sizeData = infraData.filter(item => item.sizeBytes > 0).sort((a,b) => a.sizeBytes - b.sizeBytes);
+    const bandwidthData = infraData.filter(item => item.bandwidthGBs > 0).sort((a,b) => a.bandwidthGBs - b.bandwidthGBs);
+    const latencyData = infraData.filter(item => item.latencyNs > 0).sort((a,b) => a.latencyNs - b.latencyNs);
+
+    if (sizeChartInstance) sizeChartInstance.destroy();
+    sizeChartInstance = createChart(
+        document.getElementById('sizeChart').getContext('2d'),
+        'Size',
+        sizeData.map(item => item.sizeBytes),
+        sizeData.map(item => item.name),
+        'bar', isLogScale, `Storage Capacity (${isLogScale ? 'Log' : 'Linear'} Scale)`, highlightName
+    );
+
+    if (bandwidthChartInstance) bandwidthChartInstance.destroy();
+    bandwidthChartInstance = createChart(
+        document.getElementById('bandwidthChart').getContext('2d'),
+        'Bandwidth',
+        bandwidthData.map(item => item.bandwidthGBs),
+        bandwidthData.map(item => item.name),
+        'bar', isLogScale, `Bandwidth (${isLogScale ? 'Log' : 'Linear'} Scale, Higher is Better)`, highlightName
+    );
+
+    if (latencyChartInstance) latencyChartInstance.destroy(); 
+    latencyChartInstance = createChart(
+        document.getElementById('latencyChart').getContext('2d'),
+        'Latency',
+        latencyData.map(item => item.latencyNs),
+        latencyData.map(item => item.name),
+        'bar', true, 'Latency (Log Scale, Lower is Better)', highlightName
+    );
+}
+
+function updateDetails(componentName) {
+    const detailsContent = document.getElementById('detailsContent');
+    if (!componentName) {
+        detailsContent.innerHTML = `<p class="italic">Select a component from the dropdown or table to see its details here.</p>`;
+        return;
+    }
+
+    const component = infraData.find(item => item.name === componentName);
+    if (component) {
+        detailsContent.innerHTML = `
+            <div class="flex items-center mb-4">
+                <span class="text-3xl mr-3">${component.icon || '⚙️'}</span>
+                <h3 class="text-2xl font-semibold text-teal-600">${component.name}</h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                <div><strong>Category:</strong> ${component.category}</div>
+                <div><strong>Typical Size:</strong> ${formatSize(component.sizeBytes)}</div>
+                <div><strong>Typical Bandwidth:</strong> ${formatBandwidth(component.bandwidthGBs)}</div>
+                <div><strong>Typical Latency:</strong> ${formatLatency(component.latencyNs)}</div>
+            </div>
+            <p class="text-sm"><strong>Description:</strong> ${component.description}</p>
+        `;
+    } else {
+        detailsContent.innerHTML = `<p class="italic">Details not found for ${componentName}.</p>`;
+    }
+}
+
+
+function renderTable(dataToRender) {
+    const tableBody = document.getElementById('infraTableBody');
+    tableBody.innerHTML = '';
+
+    dataToRender.forEach(item => {
+        const row = tableBody.insertRow();
+        row.className = 'hover:bg-orange-100 transition-colors duration-150 ease-in-out';
+        if (document.getElementById('componentSelect').value === item.name) {
+            row.classList.add('highlighted-row');
+        }
+
+        row.insertCell().textContent = item.name;
+        row.insertCell().textContent = formatSize(item.sizeBytes);
+        row.insertCell().textContent = formatBandwidth(item.bandwidthGBs);
+        row.insertCell().textContent = formatLatency(item.latencyNs);
+
+        row.addEventListener('click', () => {
+            document.getElementById('componentSelect').value = item.name;
+            handleSelectionChange();
+        });
+    });
+}
+
+function sortTable(columnKey) {
+    if (currentSortColumn === columnKey) {
+        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSortColumn = columnKey;
+        currentSortDirection = 'asc';
+    }
+
+    const sortedData = [...infraData].sort((a, b) => {
+        let valA, valB;
+        if (columnKey === 'name') {
+            valA = a.name.toLowerCase(); valB = b.name.toLowerCase();
+        } else if (columnKey === 'size') {
+            valA = a.sizeBytes; valB = b.sizeBytes;
+        } else if (columnKey === 'bandwidth') {
+            valA = a.bandwidthGBs; valB = b.bandwidthGBs;
+        } else if (columnKey === 'latency') {
+            valA = a.latencyNs; valB = b.latencyNs;
+        }
+        
+        const aIsInvalid = (valA === 0 || valA === null || valA === undefined);
+        const bIsInvalid = (valB === 0 || valB === null || valB === undefined);
+
+        if (aIsInvalid && !bIsInvalid) return 1; 
+        if (!aIsInvalid && bIsInvalid) return -1; 
+        if (aIsInvalid && bIsInvalid) return 0; 
+
+
+        if (valA < valB) return currentSortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return currentSortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+    renderTable(sortedData);
+    updateSortIndicators();
+}
+
+function updateSortIndicators() {
+    document.querySelectorAll('#infraTable th').forEach(th => {
+        th.classList.remove('bg-amber-300');
+        const indicator = th.querySelector('.sort-indicator');
+        if (indicator) indicator.remove();
+
+        if (th.dataset.sort === currentSortColumn) {
+            th.classList.add('bg-amber-300');
+            const newIndicator = document.createElement('span');
+            newIndicator.className = 'sort-indicator ml-1';
+            newIndicator.textContent = currentSortDirection === 'asc' ? '▲' : '▼';
+            th.appendChild(newIndicator);
+        }
+    });
+}
+
+
+function handleSelectionChange() {
+    const selectedComponent = document.getElementById('componentSelect').value;
+    updateCharts(selectedComponent);
+    updateDetails(selectedComponent);
+    document.querySelectorAll('#infraTableBody tr').forEach(row => {
+        if (row.cells[0].textContent === selectedComponent) {
+            row.classList.add('highlighted-row');
+        } else {
+            row.classList.remove('highlighted-row');
+        }
+    });
+}
+
+function handleScaleTypeChange() {
+    currentScaleType = document.getElementById('scaleTypeSelect').value;
+    const selectedComponent = document.getElementById('componentSelect').value;
+    updateCharts(selectedComponent); 
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    Chart.register(ChartDataLabels); 
+    populateDropdown();
+    updateCharts(); 
+    updateDetails(null);
+    renderTable(infraData);
+
+    document.getElementById('componentSelect').addEventListener('change', handleSelectionChange);
+    document.getElementById('scaleTypeSelect').addEventListener('change', handleScaleTypeChange);
+
+
+    document.querySelectorAll('#infraTable th').forEach(headerCell => {
+        headerCell.addEventListener('click', () => {
+            sortTable(headerCell.dataset.sort);
+        });
+    });
+});
+
+</script>
+</body>
+</html>

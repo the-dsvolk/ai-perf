@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infographic: Architecting Shared File Systems for H100 GPU Clusters with NVMe-oF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!--
+    Infographic Plan: "Architecting High-Performance Shared File Systems for NVIDIA H100 GPU Clusters with NVMe Over Fabrics"
+
+    Overall Narrative: Guide the user from understanding the need for high-performance storage with H100s, through the core technologies (NVMe-oF, PFS), architectural choices, implementation steps, and finally optimization, culminating in a look at the future. The content is derived from the provided technical report (ID: 85851888-568a-44ad-af21-2c143c294a4b).
+
+    Sections:
+    1. Introduction & The Challenge (Derived from Report Sec 1 & 2.1)
+    2. Understanding the Foundations (Derived from Report Sec 2.2 & 2.3)
+    3. Architectural Blueprint: Key Decisions (Derived from Report Sec 3)
+    4. Implementation Roadmap (Derived from Report Sec 4)
+    5. Optimizing for Peak Performance (Derived from Report Sec 5)
+    6. The Future is Fast: Concluding Thoughts (Derived from Report Sec 6)
+
+    Chosen Color Palette: "Brilliant Blues and Tech Accents"
+    - Primary Blue: #007BFF
+    - Secondary Blue: #0056B3
+    - Accent Teal: #17A2B8
+    - Accent Green: #28A745
+    - Accent Yellow: #FFC107
+    - Light Background/Highlight: #E9F5FF
+    - Neutral Text: #212529
+    - Secondary Text/Subtle Elements: #6C757D
+
+    CONFIRMATION: No SVG graphics or Mermaid JS have been used in this infographic. All charts are rendered using Chart.js to Canvas, and diagrams are constructed using HTML and Tailwind CSS.
+
+    Visualization Choices (Data Point -> Goal -> Chosen Visualization -> Justification/Library/Method - Confirming NO SVG):
+
+    Section 1: Introduction & The Challenge
+    - H100 I/O Specs (PCIe, NVLink, HBM from Sec 2.1 of report): Inform -> Single Big Numbers (Large text) -> Clear, impactful display of key stats. Method: HTML/CSS. NO SVG.
+
+    Section 2: Understanding the Foundations
+    - NVMe-oF Benefits (Sec 2.2): Inform/Organize -> Bulleted List -> Clear presentation of advantages. Method: HTML/CSS. NO SVG.
+    - PFS Core Concepts (MDS, OSS, Clients from Sec 2.3): Inform/Organize -> Diagrammatic List or Simple Boxes -> Explain components. Method: HTML/CSS. NO SVG.
+
+    Section 3: Architectural Blueprint
+    - NVMe-oF Transport Comparison (Table 1, Sec 3.1 data): Compare -> Grouped Bar Chart -> Visually compare protocols across multiple metrics. Library: Chart.js (Canvas). Qualitative data mapped to 1-5 scale. NO SVG.
+    - Parallel File System Comparison (Table 2, Sec 3.2 data): Compare -> Radar Chart -> Compare PFS options across multiple features. Library: Chart.js (Canvas). Qualitative data mapped to 1-5 scale. NO SVG.
+    - GPUDirect Storage Data Path (Sec 3.3 concept): Organize/Change -> Side-by-side Flow Diagrams (Traditional vs. GDS) -> Illustrate the data path difference. Method: HTML/CSS. NO SVG.
+
+    Section 4: Implementation Roadmap
+    - Network Fabric Config (RoCE, IB, TCP key points from Sec 4.1): Organize -> Distinct styled blocks/lists -> Summarize key config points. Method: HTML/CSS. NO SVG.
+    - NVMe-oF Target & Initiator Config Flow (Sec 4.2, 4.3 concepts): Organize -> Simple Flow Chart -> Show steps. Method: HTML/CSS. NO SVG.
+    - PFS Deployment Overview (Sec 4.4 general steps): Organize -> Numbered List -> Outline general deployment steps. Method: HTML/CSS. NO SVG.
+
+    Section 5: Optimizing for Peak Performance
+    - PFS Client Tuning, Local NVMe, NUMA, GDS Best Practices, Monitoring (Sec 5.1-5.5): Organize -> Bulleted Lists. Method: HTML/CSS. NO SVG.
+
+    Section 6: The Future is Fast
+    - Future Trends (Evolution of NVMe-oF, Deeper PFS Integration, CXL, AIOps from Sec 6): Change/Inform -> Timeline Style List -> Present future outlook. Method: HTML/CSS. NO SVG.
+    -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; color: #212529; }
+        .card { background-color: white; border-radius: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); margin-bottom: 2rem; padding: 2rem; }
+        .chart-container { position: relative; width: 100%; max-width: 700px; margin-left: auto; margin-right: auto; height: 380px; max-height: 480px; }
+        @media (min-width: 768px) { .chart-container { height: 420px; } }
+        @media (min-width: 1024px) { .chart-container { max-width: 800px; height: 450px; } }
+        h1, h2, h3 { color: #0056B3; }
+        .stat-value { color: #007BFF; font-weight: 700; }
+        .accent-teal { color: #17A2B8; } .bg-accent-teal-light { background-color: #d4f0f3; }
+        .accent-green { color: #28A745; } .bg-accent-green-light { background-color: #d9f1de; }
+        .accent-yellow { color: #FFC107; } .bg-accent-yellow-light { background-color: #fff8e1; }
+        .bg-primary-light { background-color: #E9F5FF; }
+        .flow-diagram-box { border: 2px solid #007BFF; background-color: #E9F5FF; color: #0056B3; border-radius: 0.5rem; padding: 0.75rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .flow-arrow { font-size: 1.8rem; color: #007BFF; margin: 0.25rem 0.5rem; align-self: center; line-height: 1; }
+        .timeline-item { position: relative; padding-left: 2.5rem; padding-bottom: 1.5rem; border-left: 3px solid #17A2B8; }
+        .timeline-dot { position: absolute; left: -0.6rem; top: 0.25rem; height: 1rem; width: 1rem; background-color: #007BFF; border-radius: 50%; border: 2px solid white; }
+        .sticky-nav { position: -webkit-sticky; position: sticky; top: 0; z-index: 50; background-color: rgba(255, 255, 255, 0.97); backdrop-filter: blur(8px); padding: 0.75rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto; white-space: nowrap; }
+        .sticky-nav a { color: #0056B3; padding: 0.5rem 1rem; margin: 0 0.25rem; border-radius: 0.375rem; font-weight: 600; transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out; text-decoration: none; }
+        .sticky-nav a:hover, .sticky-nav a.active { background-color: #007BFF; color: white; }
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; margin-bottom: 1rem; }
+        th, td { border: 1px solid #dee2e6; padding: 0.75rem; text-align: left; font-size: 0.875rem; }
+        th { background-color: #e9f5ff; color: #0056B3; font-weight: 600; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <header class="bg-primary-light py-10 text-center">
+        <div class="container mx-auto px-4">
+            <h1 class="text-4xl md:text-5xl font-bold mb-3">Architecting High-Performance Shared File Systems</h1>
+            <p class="text-xl md:text-2xl text-gray-700">For NVIDIA H100 GPU Clusters with NVMe Over Fabrics</p>
+            <p class="mt-4 text-gray-600 max-w-3xl mx-auto text-sm md:text-base">
+                This infographic synthesizes key findings from the technical report on designing and optimizing NVMe-oF based shared file systems to meet the extreme I/O demands of NVIDIA H100 GPU clusters in HPC and AI environments.
+            </p>
+        </div>
+    </header>
+
+    <nav class="sticky-nav mb-8">
+        <div class="container mx-auto px-4 flex justify-center">
+            <a href="#challenge">Challenge</a>
+            <a href="#foundations">Foundations</a>
+            <a href="#blueprint">Blueprint</a>
+            <a href="#roadmap">Roadmap</a>
+            <a href="#optimization">Optimization</a>
+            <a href="#future">Future</a>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4">
+
+        <section id="challenge" class="card">
+            <h2 class="text-3xl font-semibold mb-6 text-center">The I/O Gauntlet: NVIDIA H100's Demand for Data</h2>
+            <p class="text-lg text-gray-700 mb-6 text-center max-w-prose mx-auto">
+                NVIDIA H100 GPUs (Hopper architecture) deliver groundbreaking computational power (Report Sec 2.1). However, this performance creates an insatiable appetite for data, pushing traditional storage to its limits. Without an equally advanced storage infrastructure, these powerful GPUs can be starved, leading to underutilization and diminished ROI.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-center mb-8">
+                <div class="bg-gray-100 p-6 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold mb-2">PCIe Gen5 x16</h3>
+                    <p class="text-4xl stat-value">128 GB/s</p>
+                    <p class="text-gray-600 text-sm">Bidirectional bandwidth to host system (Report Sec 2.1).</p>
+                </div>
+                <div class="bg-gray-100 p-6 rounded-lg shadow">
+                    <h3 class="text-xl font-semibold mb-2">4th Gen NVLink</h3>
+                    <p class="text-4xl stat-value">900 GB/s</p>
+                    <p class="text-gray-600 text-sm">Bidirectional GPU-to-GPU bandwidth (Report Sec 2.1).</p>
+                </div>
+                <div class="bg-gray-100 p-6 rounded-lg shadow sm:col-span-2 lg:col-span-1">
+                    <h3 class="text-xl font-semibold mb-2">HBM3 Memory</h3>
+                    <p class="text-4xl stat-value">Up to 3.9 TB/s</p>
+                    <p class="text-gray-600 text-sm">Memory bandwidth (PCIe H100 NVL 94GB) (Report Sec 2.1).</p>
+                </div>
+            </div>
+            <p class="text-gray-700 text-center max-w-prose mx-auto">
+                These figures underscore the H100's capacity for rapid data ingestion and processing. Advanced storage solutions, particularly NVMe Over Fabrics (NVMe-oF) coupled with Parallel File Systems (PFS), are crucial to feed these data-hungry accelerators and unlock their full potential (Report Sec 1).
+            </p>
+        </section>
+
+        <section id="foundations" class="card">
+            <h2 class="text-3xl font-semibold mb-8 text-center">Core Technologies: NVMe-oF & Parallel File Systems</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-2xl font-semibold mb-4">NVMe Over Fabrics (NVMe-oF)</h3>
+                    <p class="text-gray-700 mb-4">NVMe-oF extends the low-latency, high-performance NVMe command set across network fabrics, enabling remote access to NVMe SSDs with near-local performance (Report Sec 2.2). This facilitates:</p>
+                    <ul class="list-disc list-inside space-y-2 text-gray-700 pl-4 mb-4">
+                        <li><strong class="text-gray-800">Storage Disaggregation:</strong> Scale compute and storage independently.</li>
+                        <li><strong class="text-gray-800">Improved Resource Utilization:</strong> Share centralized storage pools.</li>
+                        <li><strong class="text-gray-800">Centralized Management:</strong> Simplify storage administration.</li>
+                    </ul>
+                    <p class="text-gray-700 text-sm">Common transports include NVMe/TCP, NVMe/RDMA (RoCE, InfiniBand), and NVMe/FC (Report Sec 2.2).</p>
+                </div>
+                <div>
+                    <h3 class="text-2xl font-semibold mb-4">Parallel File Systems (PFS)</h3>
+                    <p class="text-gray-700 mb-4">PFS are designed for high-speed, concurrent access to a unified file system namespace from many compute nodes, essential for large, shared datasets in HPC/AI (Report Sec 2.3). Key components typically include:</p>
+                    <div class="space-y-3">
+                        <div class="flow-diagram-box text-sm p-3"><strong class="block text-base">Metadata Servers (MDS)</strong>Manage namespace, directories, file layouts.</div>
+                        <div class="flow-diagram-box text-sm p-3"><strong class="block text-base">Data/Object Storage Servers (OSS/OST)</strong>Store actual file data, often striped across servers.</div>
+                        <div class="flow-diagram-box text-sm p-3"><strong class="block text-base">Clients</strong>Software on compute nodes for POSIX access.</div>
+                    </div>
+                    <p class="text-gray-700 mt-4 text-sm">PFS solutions like Lustre, BeeGFS, and Spectrum Scale layer atop NVMe-oF to provide scalable storage (Report Sec 2.3, 3.2).</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="blueprint" class="card">
+            <h2 class="text-3xl font-semibold mb-8 text-center">Architectural Blueprint: Key Storage Decisions</h2>
+            
+            <div class="mb-12">
+                <h3 class="text-2xl font-semibold mb-4 text-center">Choosing Your NVMe-oF Transport Protocol</h3>
+                <p class="text-gray-700 mb-6 text-center max-w-3xl mx-auto">
+                    The selection of an NVMe-oF transport (TCP, RoCE, InfiniBand) is pivotal, impacting performance, cost, and complexity (Report Sec 3.1). This chart compares key aspects based on data from Table 1 of the report. For Latency, CPU Overhead, Config. Complexity, and Cost Implications, lower scores (shorter bars) are generally better. For Max Throughput, higher scores (longer bars) are better.
+                </p>
+                <div class="chart-container max-w-4xl mx-auto h-[480px] md:h-[550px]">
+                    <canvas id="nvmeofTransportChart"></canvas>
+                </div>
+                <p class="text-sm text-gray-600 mt-4 text-center">Consider latency needs, existing infrastructure, budget, and management expertise. RDMA options (RoCE, InfiniBand) offer lower latency, while NVMe/TCP provides operational simplicity (Report Sec 2.2, 3.1).</p>
+            </div>
+
+            <div class="mb-12">
+                <h3 class="text-2xl font-semibold mb-4 text-center">Selecting Your Parallel File System</h3>
+                 <p class="text-gray-700 mb-6 text-center max-w-3xl mx-auto">
+                    Various PFS options (Lustre, BeeGFS, IBM Spectrum Scale, Ceph) can leverage NVMe-oF (Report Sec 3.2). This radar chart compares them on key features from Table 2 of the report. Scores are on a 1-5 scale, where higher is generally better.
+                </p>
+                <div class="chart-container max-w-2xl mx-auto h-[450px] md:h-[500px]">
+                    <canvas id="pfsComparisonChart"></canvas>
+                </div>
+                <p class="text-sm text-gray-600 mt-4 text-center">Selection depends on scalability, metadata performance, GDS support, ease of management, data protection, and licensing (Report Sec 3.2).</p>
+            </div>
+
+            <div>
+                <h3 class="text-2xl font-semibold mb-6 text-center">The Power of NVIDIA GPUDirect Storage (GDS)</h3>
+                <p class="text-gray-700 mb-6 text-center max-w-3xl mx-auto">
+                    GDS creates a direct data path between GPU memory and storage (local NVMe or remote NVMe-oF), bypassing the CPU bounce buffer. This significantly reduces latency, increases bandwidth, and lowers CPU overhead, crucial for H100 performance (Report Sec 3.3).
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                    <div class="p-6 border-2 border-red-400 rounded-lg bg-red-50 shadow-md">
+                        <h4 class="text-xl font-semibold mb-3 text-red-700 text-center">Traditional I/O Path (Without GDS)</h4>
+                        <div class="flex flex-col items-center space-y-1 text-sm">
+                            <div class="flow-diagram-box w-full bg-red-100 border-red-500 text-red-700 p-2">Storage (NVMe/NVMe-oF)</div>
+                            <div class="flow-arrow text-red-500">▼</div>
+                            <div class="flow-diagram-box w-full bg-red-100 border-red-500 text-red-700 p-2">CPU System Memory (Bounce Buffer)</div>
+                            <div class="flow-arrow text-red-500">▼</div>
+                            <div class="flow-diagram-box w-full bg-red-100 border-red-500 text-red-700 p-2">GPU Memory</div>
+                            <p class="mt-3 text-xs text-red-600 text-center">Introduces latency & CPU overhead.</p>
+                        </div>
+                    </div>
+                    <div class="p-6 border-2 border-green-500 rounded-lg bg-green-50 shadow-md">
+                        <h4 class="text-xl font-semibold mb-3 text-green-700 text-center">GPUDirect Storage Path</h4>
+                         <div class="flex flex-col items-center space-y-1 text-sm">
+                            <div class="flow-diagram-box w-full bg-green-100 border-green-500 text-green-700 p-2">Storage (NVMe/NVMe-oF)</div>
+                            <div class="flow-arrow text-green-500">▼ <span class="text-xs">(Direct DMA)</span></div>
+                            <div class="flow-diagram-box w-full bg-green-100 border-green-500 text-green-700 p-2">GPU Memory</div>
+                            <p class="mt-3 text-xs text-green-600 text-center">Bypasses CPU, reduces latency, increases bandwidth, lowers CPU load.</p>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-gray-700 mt-6 text-center max-w-3xl mx-auto">Effective GDS requires support from the PFS client, storage system/NVMe-oF target, and relevant drivers (Report Sec 3.3, 5.4).</p>
+            </div>
+        </section>
+
+        <section id="roadmap" class="card">
+            <h2 class="text-3xl font-semibold mb-8 text-center">Implementation Roadmap Overview</h2>
+            <p class="text-gray-700 mb-8 text-center max-w-3xl mx-auto">Building an NVMe-oF shared file system involves configuring the network, setting up NVMe-oF targets and initiators, and deploying the PFS (Report Sec 4).</p>
+            <div class="space-y-10">
+                <div>
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center"><span class="text-3xl mr-3 text-primary-blue">1.</span>Network Fabric Configuration</h3>
+                    <p class="text-gray-700 mb-4">Configuration is highly dependent on the chosen NVMe-oF transport (Report Sec 4.1):</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="p-4 bg-accent-yellow-light rounded-lg border border-yellow-400 shadow">
+                            <h4 class="font-semibold text-lg mb-2 text-yellow-700">NVMe/RoCE (Lossless Ethernet)</h4>
+                            <ul class="list-disc list-inside text-sm space-y-1 text-gray-700">
+                                <li>Requires Data Center Bridging (DCB): PFC, ECN.</li>
+                                <li>RDMA-capable NICs (rNICs) & DCB-capable switches.</li>
+                                <li>Complex but high performance.</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-accent-teal-light rounded-lg border border-teal-400 shadow">
+                            <h4 class="font-semibold text-lg mb-2 text-teal-700">NVMe/InfiniBand</h4>
+                            <ul class="list-disc list-inside text-sm space-y-1 text-gray-700">
+                                <li>Inherently lossless, native RDMA.</li>
+                                <li>Subnet Manager (SM) required.</li>
+                                <li>Dedicated IB HCAs & switches. Ultra-low latency.</li>
+                            </ul>
+                        </div>
+                        <div class="p-4 bg-accent-green-light rounded-lg border border-green-400 shadow">
+                            <h4 class="font-semibold text-lg mb-2 text-green-700">NVMe/TCP</h4>
+                            <ul class="list-disc list-inside text-sm space-y-1 text-gray-700">
+                                <li>Standard Ethernet NICs & switches.</li>
+                                <li>No lossless fabric requirement. Simpler deployment.</li>
+                                <li>Jumbo Frames (MTU 9000) recommended.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center"><span class="text-3xl mr-3 text-primary-blue">2.</span>NVMe-oF Target & Initiator Setup</h3>
+                    <p class="text-gray-700 mb-4">Targets expose storage; H100 initiators connect to it (Report Sec 4.2, 4.3).</p>
+                    <div class="flex flex-col md:flex-row justify-around items-center space-y-4 md:space-y-0 md:space-x-2 p-4 bg-gray-50 rounded-lg border shadow-sm">
+                        <div class="flow-diagram-box md:w-auto flex-1 p-3 text-sm"><strong class="block text-base">H100 Node (Initiator)</strong>Load modules, `nvme-cli`</div>
+                        <div class="flex flex-col items-center text-primary-blue font-semibold text-xs md:text-sm">
+                            <span>`nvme discover`</span>
+                            <span class="flow-arrow transform md:rotate-0 rotate-90">↔</span>
+                            <span>`nvme connect`</span>
+                             <span class="flow-arrow transform md:rotate-0 rotate-90">↔</span>
+                            <span>`nvme list`</span>
+                        </div>
+                        <div class="flow-diagram-box md:w-auto flex-1 p-3 text-sm"><strong class="block text-base">Storage Server (Target)</strong>Expose NVMe namespaces (Linux Kernel Target, PFS Gateway)</div>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-3">Key steps: Install `nvme-cli`, discover targets, connect to subsystems, verify. Configure multipathing and persistence for HA.</p>
+                </div>
+
+                <div>
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center"><span class="text-3xl mr-3 text-primary-blue">3.</span>Parallel File System Deployment</h3>
+                    <p class="text-gray-700 mb-4">Layer the chosen PFS atop the NVMe-oF infrastructure (Report Sec 4.4):</p>
+                    <ol class="list-decimal list-inside space-y-2 text-gray-700 pl-4">
+                        <li>Install PFS server software (MDS, OSS/Storage Servers).</li>
+                        <li>Configure PFS servers to use NVMe-oF devices (now local to them) as backend.</li>
+                        <li>Install PFS client software on H100 compute nodes.</li>
+                        <li>Create the PFS namespace and mount it on H100 clients.</li>
+                    </ol>
+                    <p class="text-sm text-gray-600 mt-3">Specifics vary by PFS. PFS servers act as NVMe-oF initiators to shared NVMe-oF targets (e.g., EBOFs or storage arrays).</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="optimization" class="card">
+            <h2 class="text-3xl font-semibold mb-8 text-center">Optimizing for Peak Performance & Reliability</h2>
+            <p class="text-gray-700 mb-8 text-center max-w-3xl mx-auto">Achieving optimal performance requires tuning at multiple levels, from PFS clients to system configurations for GDS, and robust monitoring (Report Sec 5).</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-10">
+                <div>
+                    <h3 class="text-xl font-semibold mb-3 text-primary-blue">PFS Client Tuning (H100 Nodes)</h3>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                        <li>Adjust I/O request sizes, read-ahead, concurrency.</li>
+                        <li>Ensure NUMA-awareness (pin I/O threads & buffers locally).</li>
+                        <li>Optimize client-side caching (consider GDS interaction).</li>
+                        <li>Use appropriate PFS-specific mount options. (Sec 5.1)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-3 text-primary-blue">Leveraging Local NVMe (H100 Nodes)</h3>
+                     <ul class="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                        <li>Use as cache for frequently read data (e.g., DDN Hot Nodes).</li>
+                        <li>Act as burst buffer for temporary I/O.</li>
+                        <li>Stage input datasets for lowest read latency. (Sec 5.2)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-3 text-primary-blue">NUMA Affinity & I/O Path</h3>
+                     <ul class="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                        <li>Pin apps, GPU contexts, NIC interrupts, memory to same NUMA node.</li>
+                        <li>Ensure GPU & NVMe-oF NIC are on same CPU socket/PCIe root for GDS. (Sec 5.3)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-semibold mb-3 text-primary-blue">GPUDirect Storage (GDS) Best Practices</h3>
+                     <ul class="list-disc list-inside space-y-1 text-gray-700 text-sm">
+                        <li>Verify stack compatibility (PFS, drivers, hardware).</li>
+                        <li>Disable PCIe ACS on relevant bridges; check IOMMU settings.</li>
+                        <li>Register GPU memory buffers (`cuFileBufRegister`).</li>
+                        <li>Use `gdscheck` and `gdsio` for verification. (Sec 5.4)</li>
+                    </ul>
+                </div>
+                <div class="md:col-span-2">
+                    <h3 class="text-xl font-semibold mb-3 text-primary-blue">Monitoring & Troubleshooting Key Metrics</h3>
+                    <p class="text-gray-700 text-sm mb-2">Monitor across layers (Sec 5.5):</p>
+                    <ul class="list-disc list-inside space-y-1 text-gray-700 text-sm columns-1 sm:columns-2 lg:columns-3">
+                        <li>NVMe-oF: Latency, IOPS, Throughput, Queue Depths.</li>
+                        <li>Network: Bandwidth, Errors, PFC/ECN stats (RoCE).</li>
+                        <li>PFS: Client/Server stats, Metadata ops.</li>
+                        <li>H100 Clients: CPU/GPU utilization, Memory.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="future" class="card">
+            <h2 class="text-3xl font-semibold mb-6 text-center">The Future is Fast: Concluding Thoughts & Outlook</h2>
+            <p class="text-lg text-gray-700 mb-8 text-center max-w-3xl mx-auto">
+                Shared file systems using NVMe-oF are pivotal for H100 performance, enabling storage disaggregation and direct GPU data paths via GDS. While implementation requires careful planning, the benefits are substantial. The landscape continues to evolve (Report Sec 6):
+            </p>
+            <div class="space-y-6">
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <h4 class="text-lg font-semibold text-primary-blue">NVMe-oF Transport Evolution</h4>
+                    <p class="text-sm text-gray-600">NVMe/TCP performance improvements, simplified RoCE, next-gen InfiniBand.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <h4 class="text-lg font-semibold text-primary-blue">Deeper PFS & GDS Integration</h4>
+                    <p class="text-sm text-gray-600">Streamlined configurations, intelligent data placement aware of GPU/fabric topology.</p>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <h4 class="text-lg font-semibold text-primary-blue">Compute Express Link (CXL)</h4>
+                    <p class="text-sm text-gray-600">Cache-coherent memory sharing, new paradigms for fabric-attached memory/storage tiers.</p>
+                </div>
+                <div class="timeline-item" style="border-left-color: transparent;">
+                    <div class="timeline-dot"></div>
+                    <h4 class="text-lg font-semibold text-primary-blue">AI for Storage Management (AIOps)</h4>
+                    <p class="text-sm text-gray-600">AI/ML for performance optimization, predictive maintenance, automated troubleshooting.</p>
+                </div>
+            </div>
+            <p class="mt-8 text-gray-700 text-center max-w-3xl mx-auto">
+                The trend points towards intelligent, disaggregated, and deeply integrated data ecosystems to meet the challenges of exascale computing and beyond.
+            </p>
+        </section>
+
+    </main>
+
+    <footer class="text-center py-8 mt-8 bg-gray-800 text-gray-300">
+        <p class="text-sm">Infographic based on the report: "Architecting High-Performance Shared File Systems for NVIDIA H100 GPU Clusters with NVMe Over Fabrics." (ID: 85851888-568a-44ad-af21-2c143c294a4b)</p>
+        <p class="text-xs mt-1">All data and concepts derived from the referenced report. Visualizations are for illustrative purposes and chart data is mapped from qualitative descriptions in the report.</p>
+    </footer>
+
+    <script>
+        function wrapLabel(str, maxWidth) {
+            if (typeof str !== 'string' || str.length <= maxWidth) {
+                return str;
+            }
+            const words = str.split(' ');
+            let currentLine = '';
+            const lines = [];
+            for (const word of words) {
+                if (currentLine.length === 0) {
+                    currentLine = word;
+                } else if ((currentLine + ' ' + word).length <= maxWidth) {
+                    currentLine += ' ' + word;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                }
+            }
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            const finalLines = [];
+            for (const line of lines) {
+                if (line.length > maxWidth) {
+                    let tempLine = line;
+                    while(tempLine.length > maxWidth) {
+                        finalLines.push(tempLine.substring(0, maxWidth));
+                        tempLine = tempLine.substring(maxWidth);
+                    }
+                    if (tempLine.length > 0) finalLines.push(tempLine);
+                } else {
+                    finalLines.push(line);
+                }
+            }
+            return finalLines.length > 0 ? finalLines : [str];
+        }
+
+        const commonChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { font: { family: 'Inter', size: 11 }, color: '#212529', boxWidth: 15, padding: 15 }
+                },
+                tooltip: {
+                    bodyFont: { family: 'Inter' }, titleFont: { family: 'Inter' },
+                    backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#ffffff', bodyColor: '#ffffff',
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            if (Array.isArray(label)) { return label.join(' '); }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { font: { family: 'Inter', size: 10 }, color: '#6C757D',
+                        callback: function(value) {
+                            const label = this.getLabelForValue(value);
+                            return wrapLabel(label, 12);
+                        }
+                    },
+                    grid: { display: false }
+                },
+                y: {
+                    ticks: { font: { family: 'Inter', size: 10 }, color: '#6C757D', beginAtZero: true },
+                    grid: { color: '#e0e0e0', borderDash: [2,3] }
+                }
+            }
+        };
+        
+        const commonRadarOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { font: { family: 'Inter', size: 11 }, color: '#212529', boxWidth: 15, padding: 15 } },
+                tooltip: { bodyFont: { family: 'Inter' }, titleFont: { family: 'Inter' }, backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#ffffff', bodyColor: '#ffffff'}
+            },
+            scales: {
+                r: {
+                    angleLines: { display: true, color: '#d1d5db' },
+                    grid: { color: '#e5e7eb'},
+                    pointLabels: {
+                        font: { family: 'Inter', size: 11, weight: '600' }, color: '#0056B3',
+                        callback: function(label) { return wrapLabel(label, 15); }
+                    },
+                    ticks: { backdropColor: 'transparent', color: '#6C757D', font: { size: 9 }, stepSize: 1, max: 5, min: 0 }
+                }
+            },
+            elements: { line: { borderWidth: 2.5 }, point: { radius: 3.5, hoverRadius: 5 } }
+        };
+
+        const nvmeofTransportData = {
+            labels: ['NVMe/TCP', 'NVMe/RoCEv2', 'NVMe/InfiniBand'],
+            datasets: [
+                { label: 'Latency Score (Lower is Better)', data: [3, 2, 1], backgroundColor: '#007BFF', borderColor: '#0056B3', borderWidth: 1 },
+                { label: 'Max Throughput Score (Higher is Better)', data: [3, 4, 5], backgroundColor: '#17A2B8', borderColor: '#0F7888', borderWidth: 1 },
+                { label: 'CPU Overhead Score (Lower is Better)', data: [4, 2, 1], backgroundColor: '#28A745', borderColor: '#1F7D36', borderWidth: 1 },
+                { label: 'Config. Complexity Score (Lower is Better)', data: [1, 4, 3], backgroundColor: '#FFC107', borderColor: '#D39E00', borderWidth: 1 },
+                { label: 'Cost Implication Score (Lower is Better)', data: [1, 3, 4], backgroundColor: '#6f42c1', borderColor: '#593699', borderWidth: 1 }
+            ]
+        };
+        new Chart(document.getElementById('nvmeofTransportChart'), {
+            type: 'bar', data: nvmeofTransportData,
+            options: { ...commonChartOptions, indexAxis: 'x',
+                scales: { ...commonChartOptions.scales, y: { ...commonChartOptions.scales.y, suggestedMax: 5, title: { display: true, text: 'Relative Score (1-5)', font: {family: 'Inter', size: 12, weight: '600'}, color: '#0056B3'} } },
+                plugins: { ...commonChartOptions.plugins, title: { display: true, text: 'NVMe-oF Transport Protocol Comparison (Report Table 1)', font: {size: 16, family: 'Inter', weight: 'bold'}, color: '#0056B3', padding: { bottom: 20} } }
+             }
+        });
+
+        const pfsData = {
+            labels: [ 'Scalability', 'Metadata Performance', 'GDS Support', 'Ease of Deploy/Mgmt', 'Cost-Effectiveness (OS focus)' ],
+            datasets: [
+                { label: 'Lustre', data: [5, 4, 5, 2, 5], backgroundColor: 'rgba(0, 123, 255, 0.3)', borderColor: '#007BFF', pointBackgroundColor: '#007BFF' },
+                { label: 'BeeGFS', data: [4, 5, 5, 4, 4], backgroundColor: 'rgba(23, 162, 184, 0.3)', borderColor: '#17A2B8', pointBackgroundColor: '#17A2B8' },
+                { label: 'IBM Spectrum Scale', data: [5, 5, 5, 2, 2], backgroundColor: 'rgba(40, 167, 69, 0.3)', borderColor: '#28A745', pointBackgroundColor: '#28A745' },
+                { label: 'Ceph (RBD/FS)', data: [4.5, 3, 3, 2, 5], backgroundColor: 'rgba(255, 193, 7, 0.3)', borderColor: '#FFC107', pointBackgroundColor: '#FFC107' }
+            ]
+        };
+        new Chart(document.getElementById('pfsComparisonChart'), {
+            type: 'radar', data: pfsData,
+            options: { ...commonRadarOptions,
+                 plugins: { ...commonRadarOptions.plugins, title: { display: true, text: 'Parallel File System Comparison (Report Table 2)', font: {size: 16, family: 'Inter', weight: 'bold'}, color: '#0056B3', padding: { bottom: 20} } }
+            }
+        });
+
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('.sticky-nav a');
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 100) { current = section.getAttribute('id'); }
+            });
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').substring(1) === current) { link.classList.add('active'); }
+            });
+        });
+    </script>
+</body>
+</html>

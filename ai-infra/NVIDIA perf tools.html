@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVIDIA Performance Tools Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .tab-content.active { display: block; }
+        .tab-content { display: none; }
+        .sub-tab-content.active { display: block; }
+        .sub-tab-content { display: none; }
+        .chart-container { position: relative; width: 100%; margin-left: auto; margin-right: auto; }
+        .command-example { background-color: #2d3748; color: #e2e8f0; padding: 0.75rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.875rem; overflow-x: auto; white-space: pre; }
+    </style>
+</head>
+<body class="bg-stone-100 font-sans text-stone-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-sky-700">NVIDIA Performance Tools Explorer</h1>
+            <p class="text-lg text-stone-600 mt-2">An interactive guide to understanding and utilizing NVIDIA's suite of performance analysis tools for accelerated workloads.</p>
+        </header>
+
+        <nav class="mb-8 bg-sky-600 rounded-lg shadow">
+            <ul class="flex flex-wrap justify-center -mb-px text-sm font-medium text-center" id="tab-navigation">
+                <li><button data-tab="gpu-system" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none" type="button">Core Tools</button></li>
+                <li><button data-tab="cluster-mgmt" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none" type="button">Cluster Management</button></li>
+                <li><button data-tab="gpu-memory-test" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none" type="button">GPU Memory Test</button></li>
+                <li><button data-tab="cpu-gpu-transfer" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none" type="button">CPU-GPU Transfer</button></li>
+                <li><button data-tab="interconnects" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none" type="button">Interconnects</button></li>
+                <li><button data-tab="profiling" class="tab-button inline-block p-4 text-sky-100 hover:text-white border-b-2 border-transparent rounded-t-lg hover:border-sky-300 focus:outline-none active-tab" type="button">Profiling Techniques</button></li>
+
+            </ul>
+        </nav>
+
+        <main id="main-content">
+            <section id="profiling" class="tab-content active p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-6">Advanced Application Profiling Techniques</h2>
+                <p class="mb-6 text-stone-700">This section focuses on specific Nsight Systems techniques for in-depth analysis of application performance, covering GPU hardware-level metrics and Python application behavior to uncover complex bottlenecks.</p>
+                <div class="space-y-8">
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">GPU Hardware Profiling with Nsight Systems</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>What it is:</strong> Utilizing Nsight Systems to collect detailed GPU hardware performance counters and metrics. This goes beyond API call tracing to understand how the application is actually utilizing the GPU's architectural components.</p>
+                            <p><strong>Key Use Cases:</strong></p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Identifying if an application is truly GPU-bound by examining SM (Streaming Multiprocessor) occupancy and activity, Tensor Core usage, and other execution unit statuses.</li>
+                                <li>Understanding GPU memory bandwidth utilization (device memory, L1/L2 cache).</li>
+                                <li>Diagnosing GPU stalls related to memory latency, instruction fetching, or execution dependencies within kernels.</li>
+                                <li>Correlating periods of high/low GPU hardware activity with specific CUDA kernels or graphics API calls on the timeline.</li>
+                            </ul>
+                            <p><strong>Core Benefit:</strong> Provides a deeper understanding of application-GPU hardware interaction, revealing opportunities for optimization by modifying kernel code, launch parameters, or data access patterns. It helps answer "why" a GPU is performing a certain way.</p>
+                            <p class="italic text-sm text-orange-600">Note: Collecting detailed GPU metrics can introduce higher profiling overhead compared to API tracing alone. Choose metrics and frequency wisely.</p>
+                            <p class="mt-2">After Nsight Systems with GPU metrics helps identify problematic kernels or GPU activity patterns, <strong class="text-sky-600">NVIDIA Nsight Compute</strong> is typically used for an even more granular, microarchitectural analysis of those individual CUDA kernels.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s) for Nsight Systems GPU Metrics:</h4>
+                            <pre class="command-example"><code># Profile and collect GPU metrics from all available/compatible GPUs
+nsys profile --gpu-metrics-device=all ./my_application
+
+# Collect GPU metrics from a specific GPU (e.g., GPU 0) along with CUDA and NVTX trace
+nsys profile -t cuda,nvtx --gpu-metrics-device=0 -o gpu_metrics_report ./my_application
+
+# Set GPU metrics collection to high frequency (more detail, more overhead)
+# Check available frequencies with: nsys GpuProfiling --print-frequencies
+nsys profile --gpu-metrics-device=all --gpu-metrics-frequency=high ./my_application
+
+# To list available GPU metric sets for your hardware (if applicable):
+# nsys GpuProfiling --print-metric-sets
+# Then use a specific set:
+# nsys profile --gpu-metrics-device=all --gpu-metrics-set="&lt;your_set_name&gt;" ./my_application</code></pre>
+                        </div>
+                    </div>
+
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">Python Application Profiling with Nsight Systems</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>What it is:</strong> Using Nsight Systems to profile Python applications, enabling visualization of Python function calls on the timeline and their correlation with underlying system activity, including CPU usage, OS calls, and GPU work if NVIDIA libraries are used.</p>
+                            <p><strong>Key Use Cases:</strong></p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Identifying performance bottlenecks within Python code sections.</li>
+                                <li>Understanding the overhead of Python interpreter versus native C/C++ or GPU execution when using libraries like PyTorch, TensorFlow, CuPy, or Numba.</li>
+                                <li>Visualizing the interaction between Python scripts and the CUDA kernels or GPU libraries they invoke.</li>
+                                <li>Analyzing CPU core utilization and OS interactions (e.g., I/O, threading) stemming from Python code.</li>
+                                <li>Sampling Python call stacks to pinpoint hot functions.</li>
+                            </ul>
+                            <p><strong>Core Benefit:</strong> Helps optimize Python applications that leverage GPUs by providing insights into both Python-level execution and its impact on GPU-level performance, bridging the gap between high-level scripting and hardware execution.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s) for Nsight Systems Python Profiling:</h4>
+                            <pre class="command-example"><code># Basic profiling of a Python script
+nsys profile python my_script.py arg1 arg2
+
+# Profile Python with CUDA, NVTX, OS runtime tracing, and Python call stack sampling enabled
+# (-w true is for wait for process, useful for some Python setups)
+nsys profile -w true -t cuda,nvtx,osrt --python-sampling=true -o python_report python my_script.py
+
+# If using a specific Python interpreter or virtual environment
+nsys profile /path/to/my/venv/bin/python my_script.py
+
+# Increase sampling frequency for Python call stacks (default is 1000 Hz, higher can give more detail)
+nsys profile --python-sampling=true --python-sampling-freq=2000 python my_script.py
+
+# Trace specific Python modules or functions using NVTX annotations in your Python code
+# (Requires adding import cupy.cuda.nvtx or similar and using nvtx.RangePush/Pop)
+nsys profile -t nvtx,cuda python my_nvtx_annotated_script.py</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="gpu-system" class="tab-content p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-6">Core Profiling & Analysis Tools</h2>
+                <p class="mb-6 text-stone-700">This section introduces NVIDIA's primary tools for detailed analysis of GPU and overall system performance. These tools help you understand application behavior at both a high level and a granular kernel level.</p>
+                <div class="space-y-6">
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">NVIDIA Nsight Systems: System-Wide Bottleneck ID</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>What it is:</strong> A system-wide performance analysis tool that visualizes an application's algorithm and interactions between CPUs, GPUs, OS, and APIs on a unified timeline.</p>
+                            <p><strong>Key Use Cases:</strong></p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Identifying if an application is CPU-bound, I/O-bound, or lacks parallelism.</li>
+                                <li>Understanding CPU-GPU interactions and data transfers.</li>
+                                <li>Initial assessment of network communication and multi-node performance.</li>
+                                <li>Correlating activities across CPUs, GPUs, NICs, and OS.</li>
+                            </ul>
+                            <p><strong>Core Benefit:</strong> Serves as a "first-look" diagnostic to pinpoint the largest optimization opportunities by exposing system-level bottlenecks with low overhead.</p>
+                            <p class="italic">Nsight Systems guides developers toward the true sources of inefficiency, preventing premature optimization of incorrect components.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Basic profiling of an application
+nsys profile ./my_application arg1 arg2
+
+# Profile with specific traces (CUDA, NVTX) and statistics enabled
+nsys profile -t cuda,nvtx --stats=true -o my_report ./my_application</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">NVIDIA Nsight Compute: Deep Dive into CUDA Kernels</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>What it is:</strong> An interactive kernel profiler for detailed analysis of CUDA and NVIDIA OptiX kernels.</p>
+                            <p><strong>Key Use Cases:</strong></p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Optimizing specific CUDA kernels by examining GPU throughput, warp state, instruction execution, and memory access patterns.</li>
+                                <li>API debugging and correlating performance data to source code (CUDA C/C++, PTX, SASS).</li>
+                                <li>Receiving guided analysis and actionable recommendations based on NVIDIA best practices.</li>
+                            </ul>
+                            <p><strong>Core Benefit:</strong> Provides indispensable granular detail to maximize individual GPU kernel efficiency, crucial after Nsight Systems identifies a GPU-bound workload.</p>
+                            <p class="italic">Nsight Compute helps resolve performance limiters like instruction latency, memory bandwidth constraints, or low SM occupancy.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Profile all kernels in an application and save to a report file
+ncu -o my_kernel_report ./my_application
+
+# Profile a specific kernel by name (regex supported)
+ncu --kernels my_specific_kernel_name_regex ./my_application
+
+# Collect a specific set of metrics/sections (e.g., MemoryWorkloadAnalysis)
+ncu --set full --section MemoryWorkloadAnalysis ./my_application</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="cluster-mgmt" class="tab-content p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-6">Cluster Management & Monitoring</h2>
+                <p class="mb-6 text-stone-700">For large-scale deployments, managing and monitoring the health and performance of GPUs across the cluster is vital. This section focuses on tools designed for this purpose.</p>
+                 <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                    <h3 class="text-xl font-semibold text-sky-700 mb-3">NVIDIA Data Center GPU Manager (DCGM)</h3>
+                    <div class="text-stone-700 space-y-2">
+                        <p><strong>What it is:</strong> A suite for managing and monitoring NVIDIA GPUs in large-scale data center and cluster environments.</p>
+                        <p><strong>Key Use Cases:</strong></p>
+                        <ul class="list-disc list-inside ml-4">
+                            <li>Continuous, cluster-wide operational health monitoring and diagnostics.</li>
+                            <li>System alerts and governance policies.</li>
+                            <li>Gathering rich GPU telemetry (utilization, memory, power, clocks, temperature, PCIe/NVLink errors).</li>
+                            <li>Integration with cluster management tools like Kubernetes (via DCGM-Exporter), Prometheus, and Grafana.</li>
+                        </ul>
+                        <p><strong>Core Benefit:</strong> Ensures GPUs are functioning correctly and helps identify systemic issues or resource underutilization across the data center, improving reliability and uptime.</p>
+                        <p class="italic">DCGM provides the continuous oversight needed to ensure the underlying hardware infrastructure is sound, complementing application-specific profiling.</p>
+                        <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                        <pre class="command-example"><code># List all discoverable GPUs on the system
+dcgmi discovery -l
+
+# Get health status for all GPUs (default group)
+dcgmi health -g 1 # Assuming group 1 is the default group of all GPUs
+
+# Run short diagnostics (level 1) on GPU 0
+dcgmi diag -g 1 -i 0 -r 1
+
+# Continuously monitor specific GPU metrics (e.g., power, temp, utilization) for GPU 0
+# Field IDs: 203 (power), 252 (temp), 1004 (GPU util), 1005 (Mem util)
+dcgmi dmon -g 1 -i 0 -e 203,252,1004,1005</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <section id="gpu-memory-test" class="tab-content p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-6">GPU Memory Testing</h2>
+                <p class="mb-6 text-stone-700">Testing GPU memory is crucial for ensuring hardware stability, data integrity, and identifying potential faults. Various tools can help diagnose memory issues, from hardware errors to access problems in CUDA code.</p>
+                <div class="space-y-6">
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">DCGM Diagnostics (Memtest)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Hardware fault detection and stability, particularly for server/data center GPUs.</p>
+                            <p><strong>Key Use Cases:</strong> Runs various tests on GPU memory to identify problematic memory modules or hardware faults.</p>
+                            <p><strong>Core Benefit:</strong> Helps ensure memory hardware integrity. Higher diagnostic levels provide more thorough testing.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Run Level 2 diagnostics (includes memory tests) on all GPUs in group 1
+sudo dcgmi diag -g 1 -r 2
+
+# Run Level 3 diagnostics (more intensive memory tests)
+sudo dcgmi diag -g 1 -r 3</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">nvidia-smi (for ECC Memory)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Reporting ECC (Error Correcting Code) memory errors for GPUs that support this feature.</p>
+                            <p><strong>Key Use Cases:</strong> Checking for single-bit (corrected) and double-bit (uncorrected) ECC errors. Monitoring retired memory pages due to persistent errors.</p>
+                            <p><strong>Core Benefit:</strong> Provides visibility into the health and error status of ECC-enabled GPU memory.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Query memory details, ECC status, and page retirement info
+nvidia-smi -q -d MEMORY,ECC,PAGE_RETIREMENT
+
+# Continuously monitor ECC errors (refreshes every second)
+watch -n 1 "nvidia-smi --query-gpu=ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total --format=csv,noheader"</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">NVIDIA Compute Sanitizer (memcheck)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Debugging memory access errors within CUDA applications at the code level.</p>
+                            <p><strong>Key Use Cases:</strong> Detecting out-of-bounds global/shared memory accesses, misaligned accesses, uninitialized memory usage, and other memory-related bugs in CUDA kernels.</p>
+                            <p><strong>Core Benefit:</strong> Helps CUDA developers write more robust and correct code by pinpointing memory safety issues.</p>
+                             <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Run memcheck tool on a CUDA application
+compute-sanitizer --tool memcheck ./my_cuda_application
+
+# Generate a report file
+compute-sanitizer --tool memcheck --log-file memcheck_report.log ./my_cuda_application</code></pre>
+                        </div>
+                    </div>
+                     <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">Nsight Compute (Memory Performance)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Analyzing memory access patterns and performance within CUDA kernels, not for error detection but for optimization.</p>
+                            <p><strong>Key Use Cases:</strong> Identifying memory throughput bottlenecks, high-latency memory operations, inefficient cache utilization, and understanding how kernels interact with different levels of GPU memory.</p>
+                            <p><strong>Core Benefit:</strong> Guides optimization of kernel memory access to improve performance.</p>
+                             <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Collect detailed memory workload analysis sections
+ncu --set full --section MemoryWorkloadAnalysis --section SpeedOfLight_HierarchicalDoublePrecision ./my_cuda_kernel_app
+
+# Focus on L1/L2 cache metrics
+ncu --metrics l1tex__t_sectors_pipe_lsu_mem_global_op_ld_lookup_hit.sum,l1tex__t_sectors_pipe_lsu_mem_global_op_ld_lookup_miss.sum ./app</code></pre>
+                        </div>
+                    </div>
+                    <p class="mt-4 text-stone-600 italic">Note: Third-party tools like GpuMemTest (Windows), memtest_vulkan (cross-platform), or OCCT (Windows) also offer GPU memory stress testing capabilities, which can be useful for finding hardware instabilities.</p>
+                </div>
+            </section>
+
+            <section id="cpu-gpu-transfer" class="tab-content p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-6">Optimizing CPU-GPU Data Transfers</h2>
+                <p class="mb-6 text-stone-700">Efficient data transfer between the CPU (host) and GPU (device) memory is critical for the performance of many GPU-accelerated applications. Bottlenecks here can leave the GPU waiting for data. This section covers tools to analyze and optimize these transfers over the PCIe bus.</p>
+                <div class="space-y-6">
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">Nsight Systems (Memory Transfer Analysis)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Visualizing and timing memory copy operations (e.g., `cudaMemcpy`, OpenACC data transfers) on the system timeline.</p>
+                            <p><strong>Key Use Cases:</strong> Identifying large or frequent CPU-GPU transfers, assessing if transfers overlap with computation, pinpointing PCIe bandwidth saturation, and analyzing the impact of memory transfer latency.</p>
+                            <p><strong>Core Benefit:</strong> Provides a clear view of data movement between host and device, highlighting inefficiencies that can be addressed by techniques like using pinned memory, asynchronous transfers, or reducing data volume.</p>
+                             <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Profile CUDA memory operations along with other system activity
+nsys profile -t cuda,nvtx,osrt -o transfer_analysis_report ./my_app_with_transfers
+
+# Focus on CUDA API calls, including memory transfers
+nsys profile --trace=cuda ./my_app_with_transfers</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">nvbandwidth / bandwidthTest (PCIe Benchmark)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Benchmarking the peak achievable bandwidth of the PCIe bus for host-to-device (HtoD) and device-to-host (DtoH) transfers.</p>
+                            <p><strong>Key Use Cases:</strong> Verifying that the PCIe hardware configuration (e.g., link width, speed) allows for expected transfer rates. Identifying if the system is underperforming in terms of raw transfer capability.</p>
+                            <p><strong>Core Benefit:</strong> Establishes a baseline for maximum PCIe throughput, helping to distinguish between hardware limitations and application-level transfer inefficiencies.</p>
+                            <h4 class="font-semibold mt-3 mb-1">Example Command(s) (using CUDA Sample `bandwidthTest`):</h4>
+                            <pre class="command-example"><code># (Typically found in CUDA Samples: /usr/local/cuda/samples/1_Utilities/bandwidthTest)
+# Test all memory types and transfer directions
+./bandwidthTest
+
+# Test host-to-device bandwidth using pinned memory
+./bandwidthTest --memory=pinned --mode=htod
+
+# Test device-to-host bandwidth using pageable memory
+./bandwidthTest --memory=pageable --mode=dtoh</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">DCGM (PCIe Telemetry)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Monitoring PCIe bandwidth utilization (bytes transmitted/received over PCIe) and link error counts at a system/cluster level.</p>
+                            <p><strong>Key Use Cases:</strong> Spotting GPUs with consistently saturated PCIe links or links accumulating errors, which could impact CPU-GPU transfer performance.</p>
+                            <p><strong>Core Benefit:</strong> Provides ongoing monitoring of PCIe health and throughput, complementing Nsight Systems' application-specific trace.</p>
+                             <h4 class="font-semibold mt-3 mb-1">Example Command(s):</h4>
+                            <pre class="command-example"><code># Monitor PCIe transmit and receive bytes for GPU 0 in group 1
+# Field IDs: 1006 (PCIe Tx Bytes), 1007 (PCIe Rx Bytes)
+dcgmi dmon -g 1 -i 0 -e 1006,1007
+
+# Get PCIe link generation and width for all GPUs
+dcgmi discovery -c # Lists capabilities including PCIe gen and width</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h3 class="text-xl font-semibold text-sky-700 mb-3">GPUDirect Technology (Conceptual)</h3>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> A suite of technologies enabling data transfers between GPUs and other devices (NICs, storage) to bypass the CPU and system memory, reducing latency and CPU overhead.</p>
+                            <p><strong>Key Use Cases:</strong> GPUDirect RDMA for network transfers, GPUDirect Storage for direct access to NVMe drives. While not a "tool" itself, applications and libraries utilize these technologies.</p>
+                            <p><strong>Core Benefit:</strong> Significantly improves performance for I/O intensive workloads by creating more direct data paths to/from the GPU.</p>
+                            <p class="italic">Nsight Systems can help observe the benefits of GPUDirect (e.g., lower CPU usage during transfers, faster I/O operations) when it's effectively employed by the application or its libraries.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="interconnects" class="tab-content p-6 bg-white rounded-lg shadow">
+                <h2 class="text-2xl font-semibold text-sky-700 mb-4">Analyzing High-Speed Interconnects</h2>
+                <p class="mb-6 text-stone-700">The performance of high-speed interconnects like InfiniBand, high-speed Ethernet (RDMA), and NVIDIA NVLink is critical for applications that scale across multiple GPUs and nodes. This section delves into tools for profiling and optimizing these vital communication pathways.</p>
+                <nav class="mb-6">
+                    <ul class="flex flex-wrap justify-center border-b border-stone-200 text-sm font-medium text-center" id="sub-tab-navigation-interconnects">
+                        <li><button data-subtab="infiniband-ethernet" class="sub-tab-button inline-block p-3 text-sky-600 hover:text-sky-800 border-b-2 border-sky-600 rounded-t-lg focus:outline-none active-sub-tab" type="button">InfiniBand & Ethernet (RDMA)</button></li>
+                        <li><button data-subtab="nvlink" class="sub-tab-button inline-block p-3 text-stone-500 hover:text-sky-800 border-b-2 border-transparent rounded-t-lg hover:border-sky-500 focus:outline-none" type="button">NVIDIA NVLink</button></li>
+                    </ul>
+                </nav>
+                <div id="infiniband-ethernet" class="sub-tab-content active space-y-6">
+                    <h3 class="text-xl font-semibold text-sky-600 mb-4">InfiniBand & High-Speed Ethernet (RDMA)</h3>
+                    <p class="mb-4 text-stone-700">Tools in this category help diagnose and optimize network communication for distributed applications using InfiniBand or Ethernet with RDMA capabilities.</p>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h4 class="text-lg font-semibold text-sky-700 mb-3">Nsight Systems for Network Communication</h4>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Extends system-wide view to network communications.</p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Traces MPI and UCX library calls, samples NIC metrics.</li>
+                                <li>Visualizes network traffic patterns (message sizes, frequency) with CPU/GPU activity.</li>
+                                <li>Identifies communication stalls, congestion, idle NIC/HCA activity.</li>
+                                <li>Supports RoCE, InfiniBand; can sample switch metrics and port congestion events.</li>
+                                <li>Integrates with `ibdiagnet` for topology information.</li>
+                            </ul>
+                            <p class="italic">Vital for understanding how network behavior impacts overall application throughput.</p>
+                             <h5 class="font-semibold mt-3 mb-1">Example Command (within Nsight Systems profiling):</h5>
+                            <pre class="command-example"><code># Enable MPI and network tracing when profiling with Nsight Systems
+nsys profile -t mpi,nvtx,cuda --capture-IB-hw-counters=true -o report_with_network ./my_mpi_app</code></pre>
+                        </div>
+                    </div>
+                     <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h4 class="text-lg font-semibold text-sky-700 mb-3">InfiniBand-Specific Utilities (MLNX_OFED/UFM)</h4>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Comprehensive InfiniBand fabric management and diagnostics.</p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Includes `ibdiagnet` (fabric discovery/health), `ibqueryerrors` (port errors), `ibnetdiscover` (topology), `ibstatus` (HCA status).</li>
+                                <li>Used for low-level fabric health checks, physical layer issues, topology/routing verification.</li>
+                                <li>Assesses link congestion via counters like `XmtWait` (from `perfquery`).</li>
+                            </ul>
+                            <p class="italic">Primary diagnostic tools for suspected network hardware or configuration issues.</p>
+                            <h5 class="font-semibold mt-3 mb-1">Example Command(s):</h5>
+                            <pre class="command-example"><code># Discover InfiniBand topology
+ibnetdiscover
+
+# Check status of local InfiniBand HCAs
+ibstatus
+
+# Run comprehensive fabric diagnostics (can be disruptive, use with caution)
+# sudo ibdiagnet -r
+
+# Query port error counters for all active ports (and clear them after display)
+ibqueryerrors -c</code></pre>
+                        </div>
+                    </div>
+                </div>
+                <div id="nvlink" class="sub-tab-content space-y-6">
+                    <h3 class="text-xl font-semibold text-sky-600 mb-4">NVIDIA NVLink Profiling & Optimization</h3>
+                    <p class="mb-4 text-stone-700">NVLink provides high-bandwidth, low-latency direct GPU-to-GPU interconnect. These tools help analyze and optimize its performance, crucial for multi-GPU scaling.</p>
+                     <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h4 class="text-lg font-semibold text-sky-700 mb-3">Nsight Systems & Nsight Compute for NVLink Analysis</h4>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Nsight Systems:</strong> Visualizes high-level NVLink traffic utilization on GPU metrics timeline, correlating with kernels/memory transfers.</p>
+                            <p><strong>Nsight Compute:</strong> Provides detailed NVLink metrics (topology, per-link bandwidth, hardware counters) for granular analysis of imbalances or contention.</p>
+                            <p class="italic">A combined approach for comprehensive NVLink performance characterization.</p>
+                            <h5 class="font-semibold mt-3 mb-1">Example Command(s):</h5>
+                            <pre class="command-example"><code># Nsight Systems: NVLink metrics are often collected by default with GPU tracing.
+nsys profile -t cuda,nvtx -o nvlink_sys_report ./my_multigpu_app
+
+# Nsight Compute: Collect NVLink traffic metrics for a kernel
+ncu --metrics nvlink_total_data_transmitted,nvlink_total_data_received ./my_multigpu_app</code></pre>
+                        </div>
+                    </div>
+                     <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h4 class="text-lg font-semibold text-sky-700 mb-3">Specialized NVLink Benchmarking Utilities</h4>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>`nvbandwidth`:</strong> Measures memory bandwidth/latency between components (GPU-GPU over NVLink/PCIe, CPU-GPU).</p>
+                            <p><strong>`NCCL-Tests`:</strong> Evaluates performance and correctness of NCCL operations (e.g., all-reduce) that heavily rely on NVLink.</p>
+                            <p class="italic">Vital for baseline performance checks and hardware integrity verification.</p>
+                            <h5 class="font-semibold mt-3 mb-1">Example Command(s):</h5>
+                            <pre class="command-example"><code># nvbandwidth: Run all default tests (CUDA Sample: bandwidthTest)
+./bandwidthTest
+
+# NCCL-Tests: Run all_reduce_perf test
+./build/all_reduce_perf -b 8 -e 128M -f 2 -g $(nvidia-smi -L | wc -l)</code></pre>
+                        </div>
+                    </div>
+                    <div class="bg-stone-50 border border-stone-200 rounded-lg shadow-sm p-4">
+                        <h4 class="text-lg font-semibold text-sky-700 mb-3">DCGM for NVLink Monitoring</h4>
+                        <div class="text-stone-700 space-y-2">
+                            <p><strong>Focus:</strong> Monitors low-level health of NVLink connections.</p>
+                            <ul class="list-disc list-inside ml-4">
+                                <li>Tracks status and error counters over time.</li>
+                                <li>Helps detect faulty links or links with high error rates.</li>
+                            </ul>
+                            <p class="italic">Provides an early warning for potential hardware issues affecting NVLink.</p>
+                            <h5 class="font-semibold mt-3 mb-1">Example Command (DCGM):</h5>
+                            <pre class="command-example"><code># Get NVLink status for all GPUs in group 1
+dcgmi nvlink -g 1 -s
+
+# Get NVLink error counts for all GPUs in group 1
+dcgmi nvlink -g 1 -e</code></pre>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-10 pt-6 border-t border-stone-200">
+                    <h3 class="text-xl font-semibold text-sky-700 mb-4 text-center">Tool Strength Comparison</h3>
+                    <p class="text-center text-stone-600 mb-6">This chart offers a comparative overview of the primary strengths of key NVIDIA tools across different performance analysis domains. Higher values indicate stronger applicability or focus in that area. (Scale: 1-Low, 3-Medium, 5-High)</p>
+                    <div class="chart-container max-w-3xl h-96 md:h-[500px] max-h-[600px]">
+                        <canvas id="toolStrengthChart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const tabs = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const activeTabClasses = ['text-white', 'border-sky-300', 'bg-sky-700'];
+            const inactiveTabClasses = ['text-sky-100', 'border-transparent', 'hover:text-white', 'hover:border-sky-300'];
+
+            function switchTab(tabButton) {
+                tabs.forEach(btn => {
+                    btn.classList.remove(...activeTabClasses);
+                    btn.classList.add(...inactiveTabClasses);
+                    btn.classList.remove('active-tab');
+                });
+                tabButton.classList.add(...activeTabClasses);
+                tabButton.classList.remove(...inactiveTabClasses.filter(c => c.startsWith('hover:')));
+                tabButton.classList.add('active-tab');
+
+                const targetTabId = tabButton.dataset.tab;
+                tabContents.forEach(content => {
+                    if (content.id === targetTabId) {
+                        content.classList.add('active');
+                    } else {
+                        content.classList.remove('active');
+                    }
+                });
+            }
+            
+            tabs.forEach(button => {
+                button.addEventListener('click', function () {
+                    switchTab(this);
+                });
+            });
+            if (tabs.length > 0) { // Activate the first tab (now "Profiling") by default
+                 switchTab(tabs[0]);
+            }
+
+            const subTabsInterconnects = document.querySelectorAll('#sub-tab-navigation-interconnects .sub-tab-button');
+            const subTabContentsInterconnects = document.querySelectorAll('#interconnects .sub-tab-content');
+            const activeSubTabClasses = ['text-sky-800', 'border-sky-600'];
+            const inactiveSubTabClasses = ['text-stone-500', 'border-transparent', 'hover:text-sky-800', 'hover:border-sky-500'];
+
+            function switchSubTab(subTabButton, subTabContents) {
+                const parentNav = subTabButton.closest('ul');
+                parentNav.querySelectorAll('.sub-tab-button').forEach(btn => {
+                    btn.classList.remove(...activeSubTabClasses);
+                    btn.classList.add(...inactiveSubTabClasses);
+                     btn.classList.remove('active-sub-tab');
+                });
+                subTabButton.classList.add(...activeSubTabClasses);
+                subTabButton.classList.remove(...inactiveSubTabClasses.filter(c => c.startsWith('hover:')));
+                subTabButton.classList.add('active-sub-tab');
+
+                const targetSubTabId = subTabButton.dataset.subtab;
+                subTabContents.forEach(content => {
+                    if (content.id === targetSubTabId) {
+                        content.classList.add('active');
+                    } else {
+                        content.classList.remove('active');
+                    }
+                });
+            }
+
+            subTabsInterconnects.forEach(button => {
+                button.addEventListener('click', function () {
+                    switchSubTab(this, subTabContentsInterconnects);
+                });
+            });
+             if (subTabsInterconnects.length > 0) {
+                switchSubTab(subTabsInterconnects[0], subTabContentsInterconnects);
+            }
+
+            const ctx = document.getElementById('toolStrengthChart').getContext('2d');
+            const toolStrengthData = {
+                labels: ['Nsight Systems', 'Nsight Compute', 'DCGM', 'IB Utilities', 'NVLink Utils'],
+                datasets: [
+                    {
+                        label: 'System Bottlenecks',
+                        data: [5, 2, 2, 0, 0],
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)', 
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'GPU Kernels',
+                        data: [2, 5, 0, 0, 0],
+                        backgroundColor: 'rgba(255, 99, 132, 0.7)', 
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Cluster Health',
+                        data: [1, 0, 5, 1, 1],
+                        backgroundColor: 'rgba(75, 192, 192, 0.7)', 
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Network Fabric Diagnostics',
+                        data: [3, 0, 1, 5, 0],
+                        backgroundColor: 'rgba(255, 206, 86, 0.7)', 
+                        borderColor: 'rgba(255, 206, 86, 1)',
+                        borderWidth: 1
+                    },
+                     {
+                        label: 'NVLink Performance/Health',
+                        data: [3, 3, 2, 0, 5],
+                        backgroundColor: 'rgba(153, 102, 255, 0.7)', 
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: toolStrengthData,
+                options: {
+                    indexAxis: 'y', 
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            stacked: false, 
+                            title: {
+                                display: true,
+                                text: 'Relative Strength / Focus (1-Low to 5-High)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    if (Math.floor(value) === value) {
+                                        return value;
+                                    }
+                                }
+                            }
+                        },
+                        y: {
+                            stacked: false,
+                             ticks: {
+                                autoSkip: false, 
+                                callback: function(value, index, values) {
+                                    let label = this.getLabelForValue(value);
+                                    if (label.length > 20) { 
+                                        return label.substring(0, 18) + '...';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.x !== null) {
+                                        label += context.parsed.x;
+                                    }
+                                    return label;
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
