@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B200 System Topology Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 
+        Chosen Palette: Calm Neutrals
+        Application Structure Plan: The SPA is designed as a single-page dashboard for clear information presentation. The core is a static topology matrix. Below the matrix, a clear, always-visible legend explains the connection types. This is supported by a visual system architecture diagram. This structure was chosen for directness and clarity, removing interactive elements in favor of an immediate, easy-to-read layout, as requested.
+        Visualization & Content Choices: 
+        - Topology Matrix: Report Info -> Server connectivity data. Goal -> Inform. Viz/Method -> Static HTML table styled with Tailwind. Interaction -> None. Justification -> Provides a direct, non-interactive view of the data.
+        - Connection Legend: Report Info -> Definitions of technical terms. Goal -> Explain & Clarify. Viz/Method -> A static, styled list below the matrix. Interaction -> None. Justification -> Makes all key definitions visible at all times, removing the need for user interaction to discover information.
+        - System Diagram: Report Info -> NUMA node and GPU/NIC grouping. Goal -> Visualize Relationships. Viz/Method -> Static diagram built with HTML divs and Tailwind CSS. Justification -> Provides an immediate, high-level mental model of the server architecture.
+        CONFIRMATION: NO SVG graphics used. NO Mermaid JS used.
+    -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f7f4;
+            color: #4a4a4a;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-800">B200 System Topology Explorer</h1>
+            <p class="text-lg text-gray-600 mt-2">A high-performance server architecture overview.</p>
+        </header>
+
+        <main class="space-y-8">
+            <!-- Connectivity Matrix & Legend -->
+            <section class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Connectivity Matrix</h2>
+                <p class="mb-6 text-gray-600">This matrix shows the connection type between each component in the system. Refer to the legend below for definitions.</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-center">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-2 font-semibold"></th>
+                                <th class="p-2 font-semibold">GPU0</th>
+                                <th class="p-2 font-semibold">GPU1</th>
+                                <th class="p-2 font-semibold">GPU2</th>
+                                <th class="p-2 font-semibold">GPU3</th>
+                                <th class="p-2 font-semibold">GPU4</th>
+                                <th class="p-2 font-semibold">GPU5</th>
+                                <th class="p-2 font-semibold">GPU6</th>
+                                <th class="p-2 font-semibold">GPU7</th>
+                                <th class="p-2 font-semibold">NIC0</th>
+                                <th class="p-2 font-semibold">NIC1</th>
+                                <th class="p-2 font-semibold">NIC2</th>
+                                <th class="p-2 font-semibold">NIC3</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU0</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU1</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU2</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                            </tr>
+                            <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU3</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-cyan-100 font-mono">NODE</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                                <td class="p-2 bg-blue-100 font-mono">PIX</td>
+                            </tr>
+                             <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU4</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                            </tr>
+                             <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU5</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                            </tr>
+                             <tr class="border-b">
+                                <td class="p-2 font-bold bg-gray-100">GPU6</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                            </tr>
+                            <tr>
+                                <td class="p-2 font-bold bg-gray-100">GPU7</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-green-100 font-mono">NV18</td>
+                                <td class="p-2 bg-gray-700 text-white font-mono">X</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                                <td class="p-2 bg-red-100 font-mono">SYS</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Legend -->
+                <div class="mt-8 border-t pt-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Connection Legend</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="p-3 bg-green-100 rounded-lg">
+                            <h4 class="font-bold text-green-800">NV18 (NVLink)</h4>
+                            <p class="text-sm text-green-700">Highest-speed direct GPU-to-GPU connection.</p>
+                        </div>
+                        <div class="p-3 bg-blue-100 rounded-lg">
+                            <h4 class="font-bold text-blue-800">PIX (PCIe Local)</h4>
+                            <p class="text-sm text-blue-700">Fastest GPU-to-NIC path on the same local fabric.</p>
+                        </div>
+                        <div class="p-3 bg-cyan-100 rounded-lg">
+                            <h4 class="font-bold text-cyan-800">NODE (PCIe NUMA)</h4>
+                            <p class="text-sm text-cyan-700">Fast path to a NIC on the same NUMA node.</p>
+                        </div>
+                        <div class="p-3 bg-red-100 rounded-lg">
+                            <h4 class="font-bold text-red-800">SYS (System Cross-Connect)</h4>
+                            <p class="text-sm text-red-700">Slowest path; data crosses between CPUs.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Architecture Diagram -->
+            <section class="bg-white p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">System Architecture</h2>
+                <p class="mb-6 text-gray-600">The server is built around two main CPU complexes, called NUMA nodes. This diagram shows how GPUs and Network Interface Cards (NICs) are grouped within these nodes. All GPUs are interconnected via a high-speed NVLink mesh.</p>
+                <div class="flex flex-col md:flex-row justify-around items-center space-y-8 md:space-y-0 md:space-x-8 mt-8 relative">
+                    <!-- NUMA Node 0 -->
+                    <div class="border-4 border-indigo-300 border-dashed rounded-2xl p-6 w-full md:w-5/12 text-center">
+                        <h3 class="text-xl font-bold text-indigo-800 mb-4">NUMA Node 0</h3>
+                        <p class="text-sm text-gray-500 mb-4">CPU Cores: 0-55, 112-167</p>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div class="gpu-node bg-indigo-500 text-white p-4 rounded-lg shadow-md font-bold">GPU0</div>
+                            <div class="gpu-node bg-indigo-500 text-white p-4 rounded-lg shadow-md font-bold">GPU1</div>
+                            <div class="gpu-node bg-indigo-500 text-white p-4 rounded-lg shadow-md font-bold">GPU2</div>
+                            <div class="gpu-node bg-indigo-500 text-white p-4 rounded-lg shadow-md font-bold">GPU3</div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="nic-node bg-blue-200 text-blue-800 text-xs p-2 rounded-md font-semibold">NIC0</div>
+                            <div class="nic-node bg-blue-200 text-blue-800 text-xs p-2 rounded-md font-semibold">NIC1</div>
+                            <div class="nic-node bg-cyan-200 text-cyan-800 text-xs p-2 rounded-md font-semibold">NIC2</div>
+                            <div class="nic-node bg-cyan-200 text-cyan-800 text-xs p-2 rounded-md font-semibold">NIC3</div>
+                        </div>
+                    </div>
+                    <!-- Connection Text -->
+                     <div class="text-gray-500 font-semibold text-center absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-f8f7f4 px-2">
+                        <span class="text-3xl">↔</span> <br> NVLink & System Fabric
+                    </div>
+
+                    <!-- NUMA Node 1 -->
+                    <div class="border-4 border-amber-300 border-dashed rounded-2xl p-6 w-full md:w-5/12 text-center">
+                        <h3 class="text-xl font-bold text-amber-800 mb-4">NUMA Node 1</h3>
+                        <p class="text-sm text-gray-500 mb-4">CPU Cores: 56-111, 168-223</p>
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div class="gpu-node bg-amber-500 text-white p-4 rounded-lg shadow-md font-bold">GPU4</div>
+                            <div class="gpu-node bg-amber-500 text-white p-4 rounded-lg shadow-md font-bold">GPU5</div>
+                            <div class="gpu-node bg-amber-500 text-white p-4 rounded-lg shadow-md font-bold">GPU6</div>
+                            <div class="gpu-node bg-amber-500 text-white p-4 rounded-lg shadow-md font-bold">GPU7</div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2">
+                            <div class="nic-node bg-red-200 text-red-800 text-xs p-2 rounded-md font-semibold">NIC4</div>
+                            <div class="nic-node bg-red-200 text-red-800 text-xs p-2 rounded-md font-semibold">NIC5</div>
+                            <div class="nic-node bg-red-200 text-red-800 text-xs p-2 rounded-md font-semibold">NIC6</div>
+                            <div class="nic-node bg-red-200 text-red-800 text-xs p-2 rounded-md font-semibold">NIC7</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
