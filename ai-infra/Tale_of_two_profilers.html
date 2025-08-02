@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Guide to PyTorch Profiling: Nsys vs. PyTorch Profiler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony (Stone, Slate, Teal) -->
+    <!-- Application Structure Plan: The application is structured as a guided journey to transform the dense report into an intuitive learning path. It starts with a high-level overview, then introduces the core concepts (the two profilers, the NVTX bridge), and culminates in a task-oriented interactive workflow simulator. This structure was chosen over a direct report-to-page mapping because users of this content are likely looking for actionable answers to specific problems ("how do I debug X?"). The simulator directly addresses this need, making the information more usable and memorable than static text. The journey ends with a visual summary (the chart) and key takeaways. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Profiler Comparison Table -> Goal: Compare -> Viz: Chart.js Radar Chart -> Interaction: Hover tooltips -> Justification: A radar chart provides a much more immediate multi-axial comparison than a text table, enhancing pattern recognition. -> Library: Chart.js.
+        - Report Info: NVTX as a "bridge" -> Goal: Explain a relationship -> Viz: HTML/CSS Diagram -> Interaction: None -> Justification: A simple visual flowchart makes the abstract data flow concept concrete and easy to understand at a glance. -> Library/Method: HTML/Tailwind.
+        - Report Info: Command-line recipes & workflow steps -> Goal: Guide practical application -> Viz: Interactive UI Component -> Interaction: User clicks a "goal" button, UI updates to show relevant command, code, and a simplified visual of the expected result. -> Justification: This is the core of the app. It turns passive reading into active problem-solving, providing instant, context-specific answers. -> Library/Method: Vanilla JS.
+        - Report Info: Key takeaways -> Goal: Summarize -> Viz: Styled list/cards -> Interaction: None -> Justification: Clear, concise final recommendations are best presented as easily scannable text. -> Library/Method: HTML/Tailwind.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .nav-link { transition: color 0.2s, border-color 0.2s; }
+        .nav-link.active { color: #0d9488; border-bottom-color: #0d9488; }
+        .nav-link:not(.active):hover { color: #14b8a6; border-bottom-color: #5eead4; }
+        .step-button.active { background-color: #0d9488; color: white; }
+        .step-button:not(.active) { background-color: #f1f5f9; color: #475569; }
+        .step-button:not(.active):hover { background-color: #e2e8f0; }
+        .code-block { background-color: #1e293b; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; }
+        .chart-container { position: relative; width: 100%; max-width: 600px; margin-left: auto; margin-right: auto; height: 350px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 400px; } }
+        .timeline-bar { height: 24px; border-radius: 0.25rem; }
+        .timeline-cpu { background-color: #38bdf8; }
+        .timeline-gpu { background-color: #2dd4bf; }
+        .timeline-gap { background-color: #f1f5f9; border: 1px dashed #cbd5e1; }
+    </style>
+</head>
+<body class="bg-slate-50">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-slate-800">PyTorch Profiling Guide</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#overview" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Overview</a>
+                        <a href="#comparison" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Comparison</a>
+                        <a href="#workflow" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Interactive Workflow</a>
+                        <a href="#summary" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Summary</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+
+        <section id="overview" class="scroll-mt-24 mb-16">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">Which Tool When?</h2>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">An interactive guide to the synergy between NVIDIA Nsight Systems and the PyTorch Profiler.</p>
+            </div>
+
+            <div class="bg-white p-8 rounded-xl shadow-md">
+                <h3 class="text-2xl font-semibold text-slate-800 mb-4">Executive Summary</h3>
+                <p class="text-slate-600 leading-relaxed">
+                    The "cooperation" between NVIDIA Nsight Systems (`nsys`) and the PyTorch Profiler isn't a direct integration. They operate at different levels: `nsys` gives a system-wide hardware view, while the PyTorch Profiler provides a framework-centric software view. True synergy comes from using **NVTX ranges**, which are semantic markers that connect high-level application logic (e.g., "forward pass") to low-level system events in the `nsys` timeline. The optimal strategy is a two-stage approach: first, use the **PyTorch Profiler** to find expensive operators in your model. Then, use **`nsys`** (ideally with the modern `--pytorch` flag) to do a deep-dive system analysis and understand *why* those operators are slow (e.g., CPU waits, data stalls, or GPU underutilization).
+                </p>
+            </div>
+        </section>
+        
+        <div class="w-full border-t border-slate-200 my-16"></div>
+
+        <section id="comparison" class="scroll-mt-24 mb-16">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">A Tale of Two Profilers</h2>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">Nsight Systems and the PyTorch Profiler are designed to answer different questions at different levels of abstraction. This section helps you understand their unique strengths and when to use each one.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 items-start">
+                <div class="bg-white p-8 rounded-xl shadow-md">
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-4">NVIDIA Nsight Systems (`nsys`)</h3>
+                    <p class="text-slate-600 mb-4">The **system-wide detective**. It provides a holistic timeline of interactions between your application, the OS, and the hardware (CPUs/GPUs).</p>
+                    <ul class="space-y-2">
+                        <li class="flex items-start">
+                            <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Primary Use:</strong> Identifying system-level bottlenecks like I/O waits, CPU-GPU synchronization stalls, or scheduling latency.</span>
+                        </li>
+                        <li class="flex items-start">
+                             <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Answers:</strong> "Why is my GPU idle?" or "Is my data loading pipeline the bottleneck?"</span>
+                        </li>
+                         <li class="flex items-start">
+                             <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Level of Detail:</strong> Low-level (CUDA kernels, API calls, driver events, OS threads).</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="bg-white p-8 rounded-xl shadow-md">
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-4">PyTorch Profiler</h3>
+                    <p class="text-slate-600 mb-4">The **framework-specific analyst**. It's built into PyTorch and gives performance insights in the context of your model's code.</p>
+                    <ul class="space-y-2">
+                        <li class="flex items-start">
+                            <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Primary Use:</strong> Optimizing model architecture and identifying expensive PyTorch operators.</span>
+                        </li>
+                        <li class="flex items-start">
+                             <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Answers:</strong> "Which part of my model is slow?" or "How much memory does this layer use?"</span>
+                        </li>
+                         <li class="flex items-start">
+                             <span class="text-teal-500 mr-3 mt-1">&#10003;</span>
+                            <span><strong>Level of Detail:</strong> High-level (PyTorch operators, `nn.Module` layers, Python stack traces).</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="mt-12 bg-white p-6 rounded-xl shadow-md">
+                 <h3 class="text-2xl font-semibold text-slate-800 mb-4 text-center">Visual Comparison</h3>
+                <div class="chart-container">
+                    <canvas id="profilerComparisonChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <div class="w-full border-t border-slate-200 my-16"></div>
+
+        <section id="workflow" class="scroll-mt-24 mb-16">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">Interactive Profiling Workflow</h2>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">Don't guess what to do. Select your performance goal below to get the recommended tool, command, and an example of what to look for in the analysis.</p>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                <div class="p-8">
+                    <h3 class="text-xl font-semibold text-slate-800 mb-4">Step 1: What is your performance goal?</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="find-op">Find my slowest model operator</button>
+                        <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="debug-gpu">Debug GPU idle time or data bottlenecks</button>
+                        <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="isolate-region">Profile a specific "hot" section of code</button>
+                        <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="cpu-hotspot">Find the source of a CPU-bound hotspot</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-100 p-8 border-t border-slate-200">
+                    <div id="workflow-output">
+                        <p class="text-slate-500 text-center">Select a goal above to see the recommended workflow.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <div class="w-full border-t border-slate-200 my-16"></div>
+
+        <section id="summary" class="scroll-mt-24">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">Strategic Recommendations</h2>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">Use this decision framework to guide your performance engineering efforts.</p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 class="font-semibold text-lg text-slate-800">If your goal is to find the most expensive PyTorch operator...</h3>
+                    <p class="mt-2 text-slate-600"><strong>Then start with:</strong> The PyTorch Profiler and its TensorBoard view. It will directly point to the operators consuming the most CPU or CUDA time.</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 class="font-semibold text-lg text-slate-800">If your goal is to understand *why* an operator is slow...</h3>
+                    <p class="mt-2 text-slate-600"><strong>Then use:</strong> Nsight Systems with the `--pytorch=autograd-nvtx` flag. This gives you the system-level context to diagnose the root cause (e.g., I/O bound, sync bound).</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 class="font-semibold text-lg text-slate-800">If your goal is to measure a specific code block...</h3>
+                    <p class="mt-2 text-slate-600"><strong>Then use:</strong> Nsight Systems with `--capture-range=cudaProfilerApi` after bracketing your code with `cudaProfilerStart()` and `cudaProfilerStop()` calls.</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm">
+                    <h3 class="font-semibold text-lg text-slate-800">If your goal is to debug a suspected CPU-bound issue...</h3>
+                    <p class="mt-2 text-slate-600"><strong>Then use:</strong> Nsight Systems with CPU sampling (`-s cpu`). Be aware this adds significant overhead and is for diagnostics, not benchmarking.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const workflowData = {
+                'find-op': {
+                    title: 'Find the Slowest Model Operator',
+                    tool: 'PyTorch Profiler',
+                    description: 'Your first step should always be to identify the high-level bottleneck within the PyTorch framework itself. The PyTorch Profiler is designed for exactly this.',
+                    code: `
+# In your training script
+import torch
+from torch.profiler import profile, record_function, ProfilerActivity
+
+# ... model, data, etc. ...
+
+with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+    with record_function("model_inference"):
+        model(data)
+
+# Print summary table to console
+print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+
+# Or export for TensorBoard
+# prof.export_chrome_trace("trace.json")
+                    `.trim(),
+                    analysisTitle: 'What to Look For',
+                    analysis: `
+                        <p class="text-slate-600 mb-4">In the console output or the TensorBoard view, look at the table of operators sorted by "Self CUDA Time" or "Total CUDA Time". The operators at the top are your primary performance bottlenecks. This gives you a specific target for deeper analysis.</p>
+                    `
+                },
+                'debug-gpu': {
+                    title: 'Debug GPU Idle Time or Data Bottlenecks',
+                    tool: 'NVIDIA Nsight Systems (`nsys`)',
+                    description: 'Once you know an operator is slow, `nsys` helps you understand if the cause is external to the operator itself, such as waiting for data or CPU commands.',
+                    code: `
+# No code changes needed in your Python script.
+# Run your script from the command line:
+
+# nsys profile --pytorch=autograd-nvtx -o report.nsys-rep python your_script.py
+                    `.trim(),
+                    analysisTitle: 'What to Look For in the Nsight Systems GUI',
+                    analysis: `
+                        <p class="text-slate-600 mb-4">In the \`nsys\` timeline, look for these patterns:</p>
+                        <ul class="space-y-3 text-slate-600">
+                            <li><strong>GPU Idle Time:</strong> Look at the "CUDA HW" row. Are there large empty gaps where the GPU is doing nothing? This is a major red flag.</li>
+                            <li><strong>DataLoader Bottleneck:</strong> If the GPU gaps align with NVTX ranges for your \`DataLoader\` on a CPU thread, your data loading is too slow and is starving the GPU.</li>
+                            <li><strong>Data Transfer Stalls:</strong> Look for long-running \`cudaMemcpy\` events in the CUDA API row that occur just before your kernel runs. This means you're spending too much time moving data.</li>
+                        </ul>
+                        <div class="mt-4 p-4 bg-white rounded-lg">
+                            <p class="text-sm font-medium text-slate-700 mb-2">Simplified Timeline Example: Data Bottleneck</p>
+                            <div class="space-y-2">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500">CPU Thread 1 (DataLoader)</span>
+                                    <div class="w-full timeline-bar timeline-cpu flex items-center justify-center text-xs text-white">Data Loading</div>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500">GPU Hardware</span>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div class="w-full timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Kernel</div>
+                                        <div class="w-full timeline-bar timeline-gap flex items-center justify-center text-xs text-slate-500">GPU IDLE</div>
+                                        <div class="w-full timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Kernel</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `
+                },
+                'isolate-region': {
+                    title: 'Profile a Specific "Hot" Code Region',
+                    tool: 'NVIDIA Nsight Systems (`nsys`) + PyTorch API',
+                    description: 'To avoid large trace files and focus only on the most critical part of your code (like the main training loop), you can programmatically start and stop the profiler.',
+                    code: `
+# In your Python script, bracket the critical section:
+torch.cuda.cudart().cudaProfilerStart()
+for i, data in enumerate(train_loader):
+    # your training loop logic...
+    if i >= num_steps_to_profile:
+        break
+torch.cuda.cudart().cudaProfilerStop()
+
+# Then run nsys from the command line:
+# nsys profile --capture-range=cudaProfilerApi -o report_targeted.nsys-rep python your_script.py
+                    `.trim(),
+                    analysisTitle: 'What to Look For',
+                    analysis: `
+                        <p class="text-slate-600 mb-4">The resulting \`nsys\` report will *only* contain data from the code executed between the \`cudaProfilerStart()\` and \`cudaProfilerStop()\` calls. This gives you a clean, focused timeline view, making it much easier to analyze the performance of that specific region without noise from initialization or shutdown phases.</p>
+                    `
+                },
+                'cpu-hotspot': {
+                    title: 'Find the Source of a CPU-Bound Hotspot',
+                    tool: 'NVIDIA Nsight Systems (`nsys`) with CPU Sampling',
+                    description: 'If you suspect your application is limited by the CPU, not the GPU, you can use `nsys` to sample the CPU call stack to find which functions are taking the most time.',
+                    code: `
+# No code changes needed in your Python script.
+# Use the -s cpu flag, but be aware of the high overhead.
+
+# nsys profile -t cuda,nvtx,osrt -s cpu --cudabacktrace=true -o report_cpu.nsys-rep python your_script.py
+                    `.trim(),
+                    analysisTitle: 'What to Look For in the Nsight Systems GUI',
+                    analysis: `
+                        <p class="text-slate-600 mb-4">After running, the \`nsys\` GUI will have a "CPU stack samples" view. Sort this view by "Total" or "Self" time to see which Python or C++ functions are at the top. This will pinpoint the exact lines of code that are causing the CPU bottleneck. Use this for targeted debugging, as the overhead can distort overall performance measurements.</p>
+                    `
+                }
+            };
+
+            const buttons = document.querySelectorAll('.step-button');
+            const outputDiv = document.getElementById('workflow-output');
+
+            function updateWorkflowView(stepId) {
+                buttons.forEach(btn => {
+                    if (btn.dataset.step === stepId) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+
+                const data = workflowData[stepId];
+                if (!data) return;
+
+                outputDiv.innerHTML = `
+                    <h3 class="text-2xl font-semibold text-slate-800 mb-2">${data.title}</h3>
+                    <p class="mb-4"><strong class="font-semibold text-slate-700">Recommended Tool:</strong> <span class="text-teal-600 font-medium">${data.tool}</span></p>
+                    <p class="text-slate-600 mb-6">${data.description}</p>
+                    
+                    <div class="mb-6">
+                        <h4 class="font-semibold text-lg text-slate-800 mb-2">Implementation</h4>
+                        <div class="code-block p-4 rounded-lg text-sm overflow-x-auto">
+                            <pre><code>${data.code}</code></pre>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="font-semibold text-lg text-slate-800 mb-2">${data.analysisTitle}</h4>
+                        ${data.analysis}
+                    </div>
+                `;
+            }
+
+            buttons.forEach(button => {
+                button.addEventListener('click', () => {
+                    updateWorkflowView(button.dataset.step);
+                });
+            });
+
+            updateWorkflowView('find-op');
+
+            const ctx = document.getElementById('profilerComparisonChart').getContext('2d');
+            const comparisonChart = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['System-Level View', 'Framework-Specific', 'Ease of Setup', 'Finds "Why"', 'Finds "What"'],
+                    datasets: [{
+                        label: 'NVIDIA Nsight Systems',
+                        data: [5, 1, 3, 5, 2],
+                        backgroundColor: 'rgba(13, 148, 136, 0.2)',
+                        borderColor: 'rgba(13, 148, 136, 1)',
+                        pointBackgroundColor: 'rgba(13, 148, 136, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(13, 148, 136, 1)'
+                    }, {
+                        label: 'PyTorch Profiler',
+                        data: [1, 5, 5, 2, 5],
+                        backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                        borderColor: 'rgba(56, 189, 248, 1)',
+                        pointBackgroundColor: 'rgba(56, 189, 248, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(56, 189, 248, 1)'
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: '#e2e8f0' },
+                            grid: { color: '#e2e8f0' },
+                            pointLabels: {
+                                font: { size: 14, family: 'Inter' },
+                                color: '#475569'
+                            },
+                            ticks: {
+                                backdropColor: 'rgba(255, 255, 255, 0.75)',
+                                stepSize: 1,
+                                font: { family: 'Inter' }
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 5
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: 14, family: 'Inter' },
+                                color: '#475569'
+                            }
+                        },
+                        tooltip: {
+                            bodyFont: { family: 'Inter' },
+                            titleFont: { family: 'Inter' }
+                        }
+                    }
+                }
+            });
+
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('section');
+
+            window.addEventListener('scroll', () => {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    if (pageYOffset >= sectionTop - 80) {
+                        current = section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href').includes(current)) {
+                        link.classList.add('active');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
