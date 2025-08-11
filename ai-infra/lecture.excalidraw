@@ -6308,7 +6308,7 @@
       "isDeleted": false,
       "boundElements": [],
       "updated": 1749774465085,
-      "link": "file:///Users/dmitry.volkov/GitHub/systemdesign.github.io/ai-infra/h100_sm_architecture.md",
+      "link": "file:///Users/dmitry.volkov/GitHub/the-dsvolk/ai-perf/ai-infra/h100_sm_architecture.md",
       "locked": false
     },
     {
@@ -6412,7 +6412,7 @@
       "isDeleted": false,
       "boundElements": null,
       "updated": 1749828716995,
-      "link": "file:///Users/dmitry.volkov/GitHub/systemdesign.github.io/ai-infra/cpu-vs-gpu.html",
+      "link": "file:///Users/dmitry.volkov/GitHub/the-dsvolk/ai-perf/ai-infra/cpu-vs-gpu.html",
       "locked": false
     },
     {

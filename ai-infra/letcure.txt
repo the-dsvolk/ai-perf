@@ -7,7 +7,7 @@ https://grafana.robot.car/d/cs-job-resource-usage-wip/compute-substrate-job-reso
 
 
 Archtcture diagram 
-file:///Users/dmitry.volkov/GitHub/systemdesign.github.io/ai-infra/h100_sm_architecture.md
+file:///Users/dmitry.volkov/GitHub/the-dsvolk/ai-perf/ai-infra/h100_sm_architecture.md
 
 
 

@@ -2,11 +2,11 @@
 
 This repository is a curated collection of materials related to AI, high-performance computing (HPC), and system architecture. It includes presentations, diagrams, notes, and articles on various topics from GPU architecture to performance laws.
 
-**🌐 Browse this project at:** [https://the-dmitry-volkov.github.io/ai-perf/](https://the-dmitry-volkov.github.io/ai-perf/)
+**🌐 Browse this project at:** [https://the-dsvolk.github.io/ai-perf/](https://the-dsvolk.github.io/ai-perf/)
 
 ## Author
 
-- [Dmitry Volkov](https://github.com/the-dmitry-volkov)
+- [Dmitry Volkov](https://github.com/the-dsvolk)
 
 ## Contributing
 
