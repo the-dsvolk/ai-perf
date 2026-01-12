@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Memory Hierarchy - Interactive Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        .border-nv-green { border-color: #76B900; }
+        
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .code-block {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            overflow-x: auto;
+            border: 1px solid #334155;
+        }
+        
+        .hierarchy-level {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .hierarchy-level:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(118, 185, 0, 0.3);
+        }
+        
+        .cache-line {
+            display: flex;
+            gap: 2px;
+        }
+        .cache-float {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            border-radius: 2px;
+            transition: all 0.2s ease;
+        }
+        .cache-float.used {
+            background-color: #76B900;
+            color: #000;
+        }
+        .cache-float.wasted {
+            background-color: #334155;
+            color: #64748b;
+        }
+        .cache-float.highlight {
+            background-color: #f59e0b;
+            color: #000;
+        }
+        
+        .stride-demo {
+            display: grid;
+            grid-template-columns: repeat(32, 1fr);
+            gap: 2px;
+        }
+        
+        .mermaid {
+            background-color: transparent !important;
+        }
+        .mermaid svg {
+            max-width: 100%;
+        }
+        
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem 0.5rem 0 0;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-bottom: none;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .tab-btn.active {
+            background-color: #334155;
+            color: #76B900;
+            border-color: #76B900;
+        }
+        .tab-content {
+            display: none;
+            background-color: #334155;
+            border: 1px solid #334155;
+            border-radius: 0 0.5rem 0.5rem 0.5rem;
+            padding: 1.5rem;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        .bandwidth-bar {
+            height: 24px;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        .tooltip {
+            position: relative;
+        }
+        .tooltip:hover::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            border: 1px solid #334155;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+        <!-- Header -->
+        <header class="mb-12">
+            <h1 class="text-4xl font-bold mb-4">
+                <span class="nv-green">GPU</span> Memory Hierarchy
+            </h1>
+            <p class="text-xl text-slate-400">
+                Understanding cache levels, access patterns, and bandwidth optimization for CUDA programming
+            </p>
+            <div class="mt-4 text-sm text-slate-500">
+                Related: <a href="cuda_programming_model.html" class="text-blue-400 hover:underline">CUDA Programming Model</a>
+            </div>
+        </header>
+
+        <!-- Section 1: Memory Hierarchy Overview -->
+        <section class="card">
+            <h2 class="text-2xl font-semibold mb-6 nv-green">1. GPU Memory Hierarchy</h2>
+            <p class="text-slate-400 mb-6">
+                Modern NVIDIA GPUs have a multi-level memory hierarchy. Each level trades off capacity for speed.
+                Understanding this hierarchy is critical for writing high-performance CUDA code.
+            </p>
+            
+            <div class="mermaid">
+flowchart TB
+    subgraph GPU["GPU Die"]
+        direction TB
+        
+        REG["<b>Registers</b><br/>~20 TB/s effective<br/>256 KB per SM<br/>~1 cycle latency"]
+        
+        L1["<b>L1 Cache + Shared Memory</b><br/>~12-19 TB/s<br/>128-256 KB per SM<br/>~30 cycles latency"]
+        
+        L2["<b>L2 Cache</b><br/>~6-8 TB/s<br/>48-96 MB total<br/>~200 cycles latency"]
+    end
+    
+    HBM["<b>HBM (VRAM)</b><br/>~3.35 TB/s (H100)<br/>80-192 GB total<br/>~400+ cycles latency"]
+    
+    REG --> L1
+    L1 --> L2
+    L2 --> HBM
+    
+    style REG fill:#76B900,stroke:#76B900,color:#000
+    style L1 fill:#22c55e,stroke:#22c55e,color:#000
+    style L2 fill:#3b82f6,stroke:#3b82f6,color:#fff
+    style HBM fill:#6366f1,stroke:#6366f1,color:#fff
+            </div>
+            
+            <!-- Bandwidth Comparison -->
+            <div class="mt-8">
+                <h3 class="text-lg font-semibold mb-4">Bandwidth Comparison (H100 SXM)</h3>
+                <div class="space-y-3">
+                    <div class="flex items-center gap-4">
+                        <span class="w-32 text-sm">Registers</span>
+                        <div class="flex-1 bg-slate-700 rounded overflow-hidden">
+                            <div class="bandwidth-bar bg-[#76B900]" style="width: 100%"></div>
+                        </div>
+                        <span class="w-24 text-right text-sm nv-green">~20 TB/s</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="w-32 text-sm">L1/Shared</span>
+                        <div class="flex-1 bg-slate-700 rounded overflow-hidden">
+                            <div class="bandwidth-bar bg-green-500" style="width: 75%"></div>
+                        </div>
+                        <span class="w-24 text-right text-sm text-green-400">~15 TB/s</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="w-32 text-sm">L2 Cache</span>
+                        <div class="flex-1 bg-slate-700 rounded overflow-hidden">
+                            <div class="bandwidth-bar bg-blue-500" style="width: 35%"></div>
+                        </div>
+                        <span class="w-24 text-right text-sm text-blue-400">~7 TB/s</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="w-32 text-sm">HBM</span>
+                        <div class="flex-1 bg-slate-700 rounded overflow-hidden">
+                            <div class="bandwidth-bar bg-indigo-500" style="width: 17%"></div>
+                        </div>
+                        <span class="w-24 text-right text-sm text-indigo-400">~3.35 TB/s</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 2: Cache Line Architecture -->
+        <section class="card">
+            <h2 class="text-2xl font-semibold mb-6 nv-green">2. Cache Line Architecture</h2>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">L2 Cache Organization</h3>
+                    <table class="w-full text-sm">
+                        <tr class="border-b border-slate-600">
+                            <td class="py-2 text-slate-400">Total Size</td>
+                            <td class="py-2 text-right">50-96 MB</td>
+                        </tr>
+                        <tr class="border-b border-slate-600">
+                            <td class="py-2 text-slate-400">Cache Line Size</td>
+                            <td class="py-2 text-right nv-green font-semibold">128 bytes</td>
+                        </tr>
+                        <tr class="border-b border-slate-600">
+                            <td class="py-2 text-slate-400">Floats per Line</td>
+                            <td class="py-2 text-right">32 floats (4B each)</td>
+                        </tr>
+                        <tr class="border-b border-slate-600">
+                            <td class="py-2 text-slate-400">Associativity</td>
+                            <td class="py-2 text-right">16-32 way set-associative</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 text-slate-400">Sectors per Line</td>
+                            <td class="py-2 text-right">4 × 32B sectors</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Cache Line Layout</h3>
+                    <div class="mermaid">
+flowchart LR
+    subgraph CL["Cache Line (128 bytes)"]
+        direction LR
+        S1["Sector 0<br/>32B"]
+        S2["Sector 1<br/>32B"]
+        S3["Sector 2<br/>32B"]
+        S4["Sector 3<br/>32B"]
+    end
+    
+    style S1 fill:#76B900,stroke:#76B900,color:#000
+    style S2 fill:#22c55e,stroke:#22c55e,color:#000
+    style S3 fill:#3b82f6,stroke:#3b82f6,color:#fff
+    style S4 fill:#6366f1,stroke:#6366f1,color:#fff
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Visual Cache Line -->
+            <div class="mt-8">
+                <h3 class="text-lg font-semibold mb-4">Memory Layout: Cache Lines with Floats</h3>
+                <div class="space-y-3">
+                    <div>
+                        <div class="text-sm text-slate-400 mb-2">Cache Line 0 (bytes 0-127): 32 floats</div>
+                        <div class="cache-line">
+                            <div class="cache-float used">f0</div>
+                            <div class="cache-float used">f1</div>
+                            <div class="cache-float used">f2</div>
+                            <div class="cache-float used">f3</div>
+                            <div class="cache-float used">f4</div>
+                            <div class="cache-float used">f5</div>
+                            <div class="cache-float used">f6</div>
+                            <div class="cache-float used">f7</div>
+                            <div class="cache-float wasted">...</div>
+                            <div class="cache-float used">f28</div>
+                            <div class="cache-float used">f29</div>
+                            <div class="cache-float used">f30</div>
+                            <div class="cache-float used">f31</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-slate-400 mb-2">Cache Line 1 (bytes 128-255): 32 floats</div>
+                        <div class="cache-line">
+                            <div class="cache-float used">f32</div>
+                            <div class="cache-float used">f33</div>
+                            <div class="cache-float used">f34</div>
+                            <div class="cache-float used">f35</div>
+                            <div class="cache-float used">f36</div>
+                            <div class="cache-float used">f37</div>
+                            <div class="cache-float used">f38</div>
+                            <div class="cache-float used">f39</div>
+                            <div class="cache-float wasted">...</div>
+                            <div class="cache-float used">f60</div>
+                            <div class="cache-float used">f61</div>
+                            <div class="cache-float used">f62</div>
+                            <div class="cache-float used">f63</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-slate-400 mb-2">Cache Line 2 (bytes 256-383): 32 floats</div>
+                        <div class="cache-line">
+                            <div class="cache-float used">f64</div>
+                            <div class="cache-float used">f65</div>
+                            <div class="cache-float used">f66</div>
+                            <div class="cache-float used">f67</div>
+                            <div class="cache-float used">f68</div>
+                            <div class="cache-float used">f69</div>
+                            <div class="cache-float used">f70</div>
+                            <div class="cache-float used">f71</div>
+                            <div class="cache-float wasted">...</div>
+                            <div class="cache-float used">f92</div>
+                            <div class="cache-float used">f93</div>
+                            <div class="cache-float used">f94</div>
+                            <div class="cache-float used">f95</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Access Patterns & Cache Efficiency -->
+        <section class="card">
+            <h2 class="text-2xl font-semibold mb-6 nv-green">3. Access Patterns & Cache Efficiency</h2>
+            
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-0">
+                <button class="tab-btn active" onclick="showTab('stride1')">Stride = 1</button>
+                <button class="tab-btn" onclick="showTab('stride32')">Stride = 32</button>
+                <button class="tab-btn" onclick="showTab('stride1024')">Stride = 1024</button>
+            </div>
+            
+            <!-- Tab Content: Stride 1 -->
+            <div id="stride1" class="tab-content active">
+                <h3 class="text-lg font-semibold mb-4 text-green-400">Sequential Access (stride=1) - Best Case</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-slate-400 mb-4">
+                            Every element in the cache line is used. Maximum cache efficiency!
+                        </p>
+                        <div class="code-block">
+<span style="color:#64748b;">// Access pattern: f0, f1, f2, f3, ...</span>
+<span style="color:#f59e0b;">for</span> (<span style="color:#3b82f6;">int</span> i = <span style="color:#22c55e;">0</span>; i < N; i++) {
+    sum += data[i];  <span style="color:#64748b;">// stride = 1</span>
+}
+                        </div>
+                        <div class="mt-4 p-4 bg-green-900/30 rounded-lg border border-green-700">
+                            <div class="text-green-400 font-semibold">Cache Efficiency: ~100%</div>
+                            <div class="text-sm text-slate-400">All 32 floats per cache line are used</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-slate-400 mb-2">Cache Line 0: All floats used ✓</div>
+                        <div class="cache-line flex-wrap">
+                            <div class="cache-float used">f0</div>
+                            <div class="cache-float used">f1</div>
+                            <div class="cache-float used">f2</div>
+                            <div class="cache-float used">f3</div>
+                            <div class="cache-float used">f4</div>
+                            <div class="cache-float used">f5</div>
+                            <div class="cache-float used">f6</div>
+                            <div class="cache-float used">f7</div>
+                            <div class="cache-float used">f8</div>
+                            <div class="cache-float used">f9</div>
+                            <div class="cache-float used">f10</div>
+                            <div class="cache-float used">f11</div>
+                            <div class="cache-float used">f12</div>
+                            <div class="cache-float used">f13</div>
+                            <div class="cache-float used">f14</div>
+                            <div class="cache-float used">f15</div>
+                        </div>
+                        <div class="cache-line flex-wrap mt-1">
+                            <div class="cache-float used">f16</div>
+                            <div class="cache-float used">f17</div>
+                            <div class="cache-float used">f18</div>
+                            <div class="cache-float used">f19</div>
+                            <div class="cache-float used">f20</div>
+                            <div class="cache-float used">f21</div>
+                            <div class="cache-float used">f22</div>
+                            <div class="cache-float used">f23</div>
+                            <div class="cache-float used">f24</div>
+                            <div class="cache-float used">f25</div>
+                            <div class="cache-float used">f26</div>
+                            <div class="cache-float used">f27</div>
+                            <div class="cache-float used">f28</div>
+                            <div class="cache-float used">f29</div>
+                            <div class="cache-float used">f30</div>
+                            <div class="cache-float used">f31</div>
+                        </div>
+                        <div class="mt-4 text-sm">
+                            <span class="nv-green font-semibold">Measured BW: ~2500 GB/s</span>
+                            <span class="text-slate-400"> (L2 cache serving most requests)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Content: Stride 32 -->
+            <div id="stride32" class="tab-content">
+                <h3 class="text-lg font-semibold mb-4 text-yellow-400">Strided Access (stride=32) - 1 Float per Line</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-slate-400 mb-4">
+                            Only 1 float used per cache line. Fetching 128 bytes to use 4 bytes!
+                        </p>
+                        <div class="code-block">
+<span style="color:#64748b;">// Access pattern: f0, f32, f64, f96, ...</span>
+<span style="color:#f59e0b;">for</span> (<span style="color:#3b82f6;">int</span> i = <span style="color:#22c55e;">0</span>; i < N; i += <span style="color:#22c55e;">32</span>) {
+    sum += data[i];  <span style="color:#64748b;">// stride = 32</span>
+}
+                        </div>
+                        <div class="mt-4 p-4 bg-yellow-900/30 rounded-lg border border-yellow-700">
+                            <div class="text-yellow-400 font-semibold">Cache Efficiency: 3.125%</div>
+                            <div class="text-sm text-slate-400">1 of 32 floats used per cache line</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-sm text-slate-400 mb-2">Cache Line 0: Only f0 used, f1-f31 wasted!</div>
+                        <div class="cache-line flex-wrap">
+                            <div class="cache-float highlight">f0</div>
+                            <div class="cache-float wasted">f1</div>
+                            <div class="cache-float wasted">f2</div>
+                            <div class="cache-float wasted">f3</div>
+                            <div class="cache-float wasted">f4</div>
+                            <div class="cache-float wasted">f5</div>
+                            <div class="cache-float wasted">f6</div>
+                            <div class="cache-float wasted">f7</div>
+                            <div class="cache-float wasted">f8</div>
+                            <div class="cache-float wasted">f9</div>
+                            <div class="cache-float wasted">f10</div>
+                            <div class="cache-float wasted">f11</div>
+                            <div class="cache-float wasted">f12</div>
+                            <div class="cache-float wasted">f13</div>
+                            <div class="cache-float wasted">f14</div>
+                            <div class="cache-float wasted">f15</div>
+                        </div>
+                        <div class="cache-line flex-wrap mt-1">
+                            <div class="cache-float wasted">f16</div>
+                            <div class="cache-float wasted">f17</div>
+                            <div class="cache-float wasted">f18</div>
+                            <div class="cache-float wasted">f19</div>
+                            <div class="cache-float wasted">f20</div>
+                            <div class="cache-float wasted">f21</div>
+                            <div class="cache-float wasted">f22</div>
+                            <div class="cache-float wasted">f23</div>
+                            <div class="cache-float wasted">f24</div>
+                            <div class="cache-float wasted">f25</div>
+                            <div class="cache-float wasted">f26</div>
+                            <div class="cache-float wasted">f27</div>
+                            <div class="cache-float wasted">f28</div>
+                            <div class="cache-float wasted">f29</div>
+                            <div class="cache-float wasted">f30</div>
+                            <div class="cache-float wasted">f31</div>
+                        </div>
+                        <div class="mt-2 text-sm text-slate-400 mb-2">Cache Line 1: Only f32 used...</div>
+                        <div class="cache-line flex-wrap">
+                            <div class="cache-float highlight">f32</div>
+                            <div class="cache-float wasted">f33</div>
+                            <div class="cache-float wasted">f34</div>
+                            <div class="cache-float wasted">...</div>
+                        </div>
+                        <div class="mt-4 text-sm">
+                            <span class="text-yellow-400 font-semibold">Measured BW: ~1800 GB/s</span>
+                            <span class="text-slate-400"> (some L2 misses)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Content: Stride 1024 -->
+            <div id="stride1024" class="tab-content">
+                <h3 class="text-lg font-semibold mb-4 text-red-400">Large Stride (stride=1024) - Pure HBM</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-slate-400 mb-4">
+                            Stride of 1024 floats = 4KB between accesses. Cache lines are evicted before reuse.
+                            This measures <strong class="text-white">raw HBM bandwidth</strong>.
+                        </p>
+                        <div class="code-block">
+<span style="color:#64748b;">// Access pattern: f0, f1024, f2048, ...</span>
+<span style="color:#64748b;">// Each access is 4KB apart!</span>
+<span style="color:#f59e0b;">for</span> (<span style="color:#3b82f6;">int</span> i = <span style="color:#22c55e;">0</span>; i < N; i += <span style="color:#22c55e;">1024</span>) {
+    sum += data[i];  <span style="color:#64748b;">// stride = 1024</span>
+}
+                        </div>
+                        <div class="mt-4 p-4 bg-red-900/30 rounded-lg border border-red-700">
+                            <div class="text-red-400 font-semibold">Cache Efficiency: ~0%</div>
+                            <div class="text-sm text-slate-400">Every access = L2 miss → HBM fetch</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="mermaid">
+flowchart TD
+    A["Read f0<br/>(Cache Line 0)"] --> B["Skip 31 lines"]
+    B --> C["Read f1024<br/>(Cache Line 32)"]
+    C --> D["Skip 31 lines"]
+    D --> E["Read f2048<br/>(Cache Line 64)"]
+    E --> F["..."]
+    
+    G["Cache Line 0 evicted<br/>before f32 is ever read!"]
+    
+    style A fill:#ef4444,stroke:#ef4444,color:#fff
+    style C fill:#ef4444,stroke:#ef4444,color:#fff
+    style E fill:#ef4444,stroke:#ef4444,color:#fff
+    style G fill:#1e293b,stroke:#64748b,color:#94a3b8
+                        </div>
+                        <div class="mt-4 text-sm">
+                            <span class="text-red-400 font-semibold">Measured BW: ~800 GB/s</span>
+                            <span class="text-slate-400"> (true HBM bandwidth)</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 p-4 bg-slate-800 rounded-lg">
+                    <h4 class="font-semibold mb-2">Why L2 Can't Help</h4>
+                    <ul class="text-sm text-slate-400 space-y-2">
+                        <li>• <strong>L2 Size:</strong> 96 MB, but tensor is 256 MB</li>
+                        <li>• <strong>Access Gap:</strong> 4KB between accesses = 32 cache lines skipped</li>
+                        <li>• <strong>Result:</strong> By the time loop returns to reuse data, it's been evicted</li>
+                        <li>• <strong>Every read:</strong> Goes to HBM (400+ cycle latency)</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: Summary Table -->
+        <section class="card">
+            <h2 class="text-2xl font-semibold mb-6 nv-green">4. Stride vs Bandwidth Summary</h2>
+            
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-slate-600">
+                        <th class="py-3 text-left">Stride</th>
+                        <th class="py-3 text-left">Bytes Skipped</th>
+                        <th class="py-3 text-left">Cache Efficiency</th>
+                        <th class="py-3 text-left">Measured BW</th>
+                        <th class="py-3 text-left">What's Happening</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b border-slate-700">
+                        <td class="py-3 nv-green font-semibold">1</td>
+                        <td class="py-3">4 bytes</td>
+                        <td class="py-3 text-green-400">~100%</td>
+                        <td class="py-3">~2500 GB/s</td>
+                        <td class="py-3 text-slate-400">L2 cache serves most requests</td>
+                    </tr>
+                    <tr class="border-b border-slate-700">
+                        <td class="py-3 text-yellow-400 font-semibold">32</td>
+                        <td class="py-3">128 bytes</td>
+                        <td class="py-3 text-yellow-400">3.125%</td>
+                        <td class="py-3">~1800 GB/s</td>
+                        <td class="py-3 text-slate-400">1 float per cache line used</td>
+                    </tr>
+                    <tr class="border-b border-slate-700">
+                        <td class="py-3 text-orange-400 font-semibold">128</td>
+                        <td class="py-3">512 bytes</td>
+                        <td class="py-3 text-orange-400">~1%</td>
+                        <td class="py-3">~1200 GB/s</td>
+                        <td class="py-3 text-slate-400">L2 thrashing begins</td>
+                    </tr>
+                    <tr class="border-b border-slate-700">
+                        <td class="py-3 text-red-400 font-semibold">512</td>
+                        <td class="py-3">2 KB</td>
+                        <td class="py-3 text-red-400">~0%</td>
+                        <td class="py-3">~900 GB/s</td>
+                        <td class="py-3 text-slate-400">Mostly HBM</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 text-red-500 font-semibold">1024+</td>
+                        <td class="py-3">4 KB+</td>
+                        <td class="py-3 text-red-500">0%</td>
+                        <td class="py-3">~800 GB/s</td>
+                        <td class="py-3 text-slate-400">Pure HBM (no cache benefit)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Section 5: Practical Implications -->
+        <section class="card">
+            <h2 class="text-2xl font-semibold mb-6 nv-green">5. Practical Implications</h2>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="p-4 bg-green-900/20 rounded-lg border border-green-700">
+                    <h3 class="text-lg font-semibold text-green-400 mb-3">✓ When Cache Helps</h3>
+                    <ul class="text-sm text-slate-300 space-y-2">
+                        <li>• <strong>Sequential/coalesced access</strong> - stride=1</li>
+                        <li>• <strong>Dense matrix operations</strong> - GEMM, convolutions</li>
+                        <li>• <strong>Working set fits in L2</strong> - &lt;96 MB on H100</li>
+                        <li>• <strong>Data reuse</strong> - same data accessed multiple times</li>
+                    </ul>
+                </div>
+                
+                <div class="p-4 bg-red-900/20 rounded-lg border border-red-700">
+                    <h3 class="text-lg font-semibold text-red-400 mb-3">✗ When Cache Can't Help</h3>
+                    <ul class="text-sm text-slate-300 space-y-2">
+                        <li>• <strong>Sparse matrix operations</strong> - random access</li>
+                        <li>• <strong>Embedding lookups</strong> - scattered indices</li>
+                        <li>• <strong>Large stride patterns</strong> - stride &gt;128</li>
+                        <li>• <strong>Working set exceeds L2</strong> - streaming data</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="mt-6 p-4 bg-slate-800 rounded-lg">
+                <h3 class="text-lg font-semibold mb-3">Optimization Strategies</h3>
+                <div class="grid md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                        <div class="nv-green font-semibold mb-2">Memory Coalescing</div>
+                        <p class="text-slate-400">Ensure threads access adjacent memory locations for maximum cache line utilization.</p>
+                    </div>
+                    <div>
+                        <div class="nv-green font-semibold mb-2">Tiling / Blocking</div>
+                        <p class="text-slate-400">Process data in chunks that fit in L2/shared memory to maximize reuse.</p>
+                    </div>
+                    <div>
+                        <div class="nv-green font-semibold mb-2">Prefetching</div>
+                        <p class="text-slate-400">Use async copies (TMA, cp.async) to hide memory latency.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="mt-12 pt-8 border-t border-slate-700 text-center text-sm text-slate-500">
+            <p>Part of the <a href="../index.html" class="text-blue-400 hover:underline">AI Performance Design Guide</a></p>
+            <p class="mt-2">Related: 
+                <a href="cuda_programming_model.html" class="text-blue-400 hover:underline">CUDA Programming Model</a> |
+                <a href="cuda_performance_samples.html" class="text-blue-400 hover:underline">CUDA Performance Samples</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // Initialize Mermaid with dark theme
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#76B900',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#76B900',
+                lineColor: '#94a3b8',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#334155',
+                background: '#0f172a',
+                mainBkg: '#1e293b',
+                nodeBorder: '#334155',
+                clusterBkg: '#1e293b',
+                clusterBorder: '#334155',
+                defaultLinkColor: '#94a3b8',
+                titleColor: '#e2e8f0',
+                edgeLabelBackground: '#1e293b',
+                nodeTextColor: '#e2e8f0'
+            }
+        });
+
+        // Tab switching
+        function showTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Optimization Techniques</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-purple: #a371f7;
+            --accent-red: #f85149;
+            --border-color: #30363d;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+        
+        .source-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+        
+        .source-link:hover {
+            background: var(--bg-card);
+            border-color: var(--accent-blue);
+        }
+        
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .section h2 .icon {
+            font-size: 1.3rem;
+        }
+        
+        .section h3 {
+            font-size: 1.1rem;
+            color: var(--accent-blue);
+            margin: 20px 0 10px 0;
+        }
+        
+        .technique-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .technique-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+        
+        .technique-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-2px);
+        }
+        
+        .technique-card h4 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: var(--accent-green);
+        }
+        
+        .technique-card p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+        
+        .perf-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .perf-badge.speedup {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+        
+        .perf-badge.accuracy {
+            background: rgba(210, 153, 34, 0.2);
+            color: var(--accent-orange);
+        }
+        
+        .perf-badge.memory {
+            background: rgba(163, 113, 247, 0.2);
+            color: var(--accent-purple);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.85rem;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th {
+            background: var(--bg-card);
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+        
+        tr:hover td {
+            background: rgba(88, 166, 255, 0.05);
+        }
+        
+        .highlight {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+        
+        .comparison-row {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .comparison-item {
+            flex: 1;
+            min-width: 200px;
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .comparison-item.recommended {
+            border-left-color: var(--accent-green);
+        }
+        
+        .comparison-item h5 {
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+        }
+        
+        .comparison-item .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-green);
+        }
+        
+        .comparison-item .label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .note {
+            background: rgba(210, 153, 34, 0.1);
+            border: 1px solid rgba(210, 153, 34, 0.3);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9rem;
+        }
+        
+        .note::before {
+            content: "💡 ";
+        }
+        
+        .workflow {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        
+        .workflow-step {
+            background: var(--bg-card);
+            padding: 12px 20px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 0.9rem;
+        }
+        
+        .workflow-arrow {
+            color: var(--accent-blue);
+            font-size: 1.2rem;
+        }
+        
+        .use-case {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            margin: 10px 0;
+        }
+        
+        .use-case-icon {
+            color: var(--accent-green);
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .technique-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .comparison-row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Model Optimization Techniques</h1>
+        <p class="subtitle">Performance optimization methods for LLMs and diffusion models using NVIDIA Model Optimizer</p>
+        
+        <a href="https://github.com/NVIDIA/Model-Optimizer" target="_blank" class="source-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            NVIDIA/Model-Optimizer
+        </a>
+
+        <!-- MMLU Benchmark Section -->
+        <div class="section">
+            <h2><span class="icon">📊</span> What is MMLU?</h2>
+            <p><strong>Massive Multitask Language Understanding (MMLU)</strong> is a benchmark designed to evaluate language models across a diverse range of subjects and tasks. Created by researchers at UC Berkeley, it has become the standard metric for measuring the impact of optimization techniques on model quality.</p>
+            
+            <div class="technique-grid" style="margin-top: 20px;">
+                <div class="technique-card">
+                    <h4>57 Subjects</h4>
+                    <p>Covers mathematics, philosophy, law, medicine, history, computer science, and more — testing broad knowledge.</p>
+                </div>
+                <div class="technique-card">
+                    <h4>~16,000 Questions</h4>
+                    <p>Multiple-choice format ranging from elementary to professional difficulty levels.</p>
+                </div>
+                <div class="technique-card">
+                    <h4>Why It Matters</h4>
+                    <p>MMLU loss measures how much reasoning ability is sacrificed for performance gains. Lower loss = better quality retention.</p>
+                </div>
+            </div>
+            
+            <div class="note">
+                When we report "MMLU loss of 1.5%", it means the quantized model scores 1.5 percentage points lower than the original BF16 model on this benchmark. For example, 85% → 83.5%.
+            </div>
+            
+            <p style="margin-top: 15px; font-size: 0.9rem; color: var(--text-secondary);">
+                Reference: <a href="https://en.wikipedia.org/wiki/MMLU" target="_blank" style="color: var(--accent-blue);">MMLU on Wikipedia</a> | 
+                <a href="https://arxiv.org/abs/2009.03300" target="_blank" style="color: var(--accent-blue);">Original Paper (Hendrycks et al., 2020)</a>
+            </p>
+        </div>
+
+        <!-- Overview Section -->
+        <div class="section">
+            <h2><span class="icon">⚡</span> Overview</h2>
+            <p>Model optimization reduces model size and increases inference speed while maintaining accuracy. The main techniques are:</p>
+            
+            <div class="technique-grid">
+                <div class="technique-card">
+                    <h4>Post-Training Quantization (PTQ)</h4>
+                    <p>Reduce precision of weights and activations after training. Fast to apply, no retraining needed.</p>
+                    <span class="perf-badge speedup">Up to 2.1x speedup</span>
+                </div>
+                
+                <div class="technique-card">
+                    <h4>Quantization-Aware Training (QAT)</h4>
+                    <p>Train the model knowing it will be quantized. Better accuracy at ultra-low precision (4-bit).</p>
+                    <span class="perf-badge accuracy">Better accuracy</span>
+                </div>
+                
+                <div class="technique-card">
+                    <h4>Sparsity</h4>
+                    <p>Prune weights to zero, reducing compute. Combine with fine-tuning for best results.</p>
+                    <span class="perf-badge speedup">Up to 1.62x speedup</span>
+                </div>
+                
+                <div class="technique-card">
+                    <h4>AWQ (Activation-aware Weight Quantization)</h4>
+                    <p>Smart 4-bit quantization preserving important weights. Memory-efficient for large models.</p>
+                    <span class="perf-badge memory">4x memory reduction</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Technique Explanations -->
+        <div class="section">
+            <h2><span class="icon">📖</span> Understanding Each Technique</h2>
+
+            <h3>FP8 Post-Training Quantization (FP8 PTQ)</h3>
+            <p style="margin-bottom: 15px;">
+                <strong>FP8</strong> (8-bit floating point) quantization converts model weights and activations from higher precision formats (FP16/BF16) to 8-bit floating point after the model has been fully trained. Unlike integer quantization, FP8 preserves the floating-point format's ability to represent a wide dynamic range through its exponent bits, making it particularly well-suited for transformer models where activation values can vary significantly across layers.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>How FP8 Works:</strong> FP8 comes in two variants—E4M3 (4 exponent bits, 3 mantissa bits) for weights and E5M2 (5 exponent bits, 2 mantissa bits) for activations. The E4M3 format provides higher precision within a narrower range, ideal for relatively stable weight distributions. E5M2 trades precision for dynamic range, handling the wider variance in activation values. During inference, FP8 values are multiplied directly on Tensor Cores, with results accumulated in FP16/FP32 for numerical stability.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>The Calibration Process:</strong> PTQ requires a calibration step using a small representative dataset (typically 128-512 samples). The model runs forward passes on this data while the quantizer collects statistics—minimum, maximum, and distribution of values for each tensor. From these statistics, per-tensor or per-channel scaling factors are computed to map the FP16 range to FP8. The choice of calibration algorithm (MinMax, Entropy, Percentile) affects the trade-off between clipping outliers and preserving precision for common values.
+            </p>
+            <p style="margin-bottom: 15px;">
+                The key advantage of FP8 PTQ is its simplicity: you take a trained model, run calibration, and convert the weights. No retraining required. Modern GPUs like H100 and H200 have native FP8 Tensor Core support, enabling direct hardware acceleration. This makes FP8 the <strong>default recommendation</strong> for production LLM deployments on NVIDIA hardware—delivering up to 2.1x speedup with less than 1.5% accuracy degradation.
+            </p>
+            <p style="font-size: 0.9rem; color: var(--text-secondary);">
+                Reference: <a href="https://docs.nvidia.com/nemo-framework/user-guide/24.09/model-optimization/quantization/quantization.html" target="_blank" style="color: var(--accent-blue);">NVIDIA NeMo Quantization Guide</a> |
+                <a href="https://arxiv.org/abs/2209.05433" target="_blank" style="color: var(--accent-blue);">FP8 Formats for Deep Learning (Micikevicius et al., 2022)</a>
+            </p>
+
+            <h3>INT4 AWQ (Activation-Aware Weight Quantization)</h3>
+            <p style="margin-bottom: 15px;">
+                <strong>AWQ</strong> is a weight-only quantization method that compresses model weights to just 4 bits (INT4) while keeping activations in higher precision during computation. The "activation-aware" aspect is crucial: AWQ identifies which weight channels are most important by analyzing activation patterns, then protects these salient weights from aggressive quantization while compressing less critical weights more aggressively.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>How AWQ Identifies Salient Weights:</strong> AWQ observes that not all weights contribute equally to model output. By running calibration data through the model, AWQ measures activation magnitudes for each channel. Weights connected to channels with large activations are "salient"—small errors in these weights get amplified by large activations, causing significant output degradation. AWQ computes a per-channel importance score: <code>importance = mean(|activation|)</code>. The top 1% of channels by importance are identified as salient.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>The Scaling Trick:</strong> Rather than keeping salient weights in higher precision (which would complicate hardware), AWQ uses a clever mathematical equivalence. For a linear layer <code>Y = XW</code>, multiplying weights by a scale <code>s</code> and dividing activations by the same scale gives identical results: <code>Y = (X/s)(sW)</code>. AWQ scales up salient weight channels before quantization, effectively giving them more of the INT4 range's precision. During inference, the activation is scaled down to compensate. This keeps all weights in INT4 format while protecting important channels from quantization error.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>Group Quantization:</strong> AWQ typically uses group-wise quantization, where weights are divided into groups of 128 consecutive values, each with its own scale factor. This provides finer granularity than per-tensor quantization, capturing local value distributions. The scale factors are stored alongside the 4-bit weights, adding ~3% memory overhead but significantly improving accuracy.
+            </p>
+            <p style="margin-bottom: 15px;">
+                This approach achieves approximately <strong>4x memory reduction</strong> compared to FP16, allowing you to fit larger models on fewer GPUs. The trade-off is throughput: INT4 AWQ can be slower than FP8 at higher batch sizes because it requires dequantization to FP16 before Tensor Core operations. Use INT4 AWQ when memory is your primary constraint—for example, serving a 70B model on a single GPU instead of two.
+            </p>
+            <p style="font-size: 0.9rem; color: var(--text-secondary);">
+                Reference: <a href="https://arxiv.org/abs/2306.00978" target="_blank" style="color: var(--accent-blue);">AWQ Paper (Lin et al., 2023)</a>
+            </p>
+
+            <h3>W4A8 AWQ (4-bit Weights, 8-bit Activations)</h3>
+            <p style="margin-bottom: 15px;">
+                <strong>W4A8</strong> extends AWQ by also quantizing activations to 8 bits (INT8) during matrix multiplications, not just the weights. This enables the use of INT8 Tensor Cores for the actual computation, which can provide better throughput than weight-only INT4 quantization that requires dequantization to FP16 for each operation.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>How W4A8 Computation Works:</strong> In pure weight-only INT4 (W4A16), the INT4 weights must be dequantized to FP16 on-the-fly before matrix multiplication, because FP16 activations cannot directly multiply with INT4. This dequantization overhead limits throughput. W4A8 solves this by quantizing activations to INT8 dynamically at runtime. The INT4 weights are pre-converted to INT8 (by unpacking and zero-point adjustment), enabling direct INT8×INT8 matrix multiplication on Tensor Cores with INT32 accumulation.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>Dynamic vs Static Activation Quantization:</strong> Weights are quantized once (static), but activations must be quantized per-token at runtime (dynamic) since their values depend on input. W4A8 computes per-token or per-tensor activation scales on-the-fly: <code>scale = max(|activation|) / 127</code>. This adds a small overhead but enables INT8 Tensor Core utilization. The per-token quantization is critical for LLMs where different sequence positions can have vastly different activation magnitudes.
+            </p>
+            <p style="margin-bottom: 15px;">
+                W4A8 represents a balanced approach: you get most of the memory savings from 4-bit weights (enabling larger models) while gaining computational efficiency from INT8 Tensor Core operations. The accuracy impact is slightly higher than FP8 due to the additional activation quantization, but W4A8 often outperforms pure INT4 AWQ in throughput, especially at larger batch sizes where Tensor Core utilization dominates. It's ideal when you need <strong>both memory efficiency and high throughput</strong>.
+            </p>
+
+            <h3>Quantization-Aware Training (QAT)</h3>
+            <p style="margin-bottom: 15px;">
+                <strong>QAT</strong> fundamentally differs from PTQ by incorporating quantization simulation into the training process itself. During forward passes, weights and activations are quantized to the target precision; during backward passes, gradients flow through using the "straight-through estimator" to enable learning. This allows the model to adapt its weights to compensate for quantization error during training.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>The Fake Quantization Mechanism:</strong> QAT inserts "fake quantization" nodes into the computational graph. During the forward pass, these nodes simulate quantization: <code>q(x) = round(x/scale) × scale</code>. The output is still in floating-point but has been rounded to values representable in the target precision. This lets the model "experience" quantization error during training. The loss function sees the quantized outputs, so gradients naturally push the model toward weights that are robust to rounding.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>Straight-Through Estimator (STE):</strong> The rounding operation has zero gradient almost everywhere (it's a step function), which would block backpropagation. STE solves this by pretending the gradient of rounding is 1: during backward pass, gradients flow through the fake quantization node unchanged, as if it were an identity function. Mathematically: <code>∂q(x)/∂x ≈ 1</code>. This approximation works surprisingly well in practice—the model learns to place weights where rounding causes minimal damage.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>QAT Training Process:</strong> Typically, QAT starts from a pre-trained FP16 model and fine-tunes for 5-10% of the original training steps. The quantization parameters (scales, zero-points) are learned jointly with the weights—either frozen after a warmup period or updated throughout. For LLMs, QAT often uses a small subset of the original training data or a task-specific dataset. The compute cost is modest (hours to days, not weeks), making QAT practical even for large models.
+            </p>
+            <p style="margin-bottom: 15px;">
+                The benefit becomes dramatic at ultra-low precisions. When quantizing to INT4 weights with INT8 activations, PTQ can cause validation loss to explode (e.g., 1.036 → 3.321), while QAT maintains much better accuracy (1.036 → 1.294). QAT is essential for <strong>accuracy-critical applications</strong> targeting aggressive quantization, and it's particularly important for deploying 4-bit models on NVIDIA Blackwell architecture which has native 4-bit Tensor Core support.
+            </p>
+            <p style="font-size: 0.9rem; color: var(--text-secondary);">
+                Reference: <a href="https://arxiv.org/abs/1712.05877" target="_blank" style="color: var(--accent-blue);">QAT Paper (Jacob et al., 2017)</a> |
+                <a href="https://arxiv.org/abs/2004.09602" target="_blank" style="color: var(--accent-blue);">Integer Quantization for Deep Learning (Wu et al., 2020)</a>
+            </p>
+
+            <h3>Sparsity (Weight Pruning)</h3>
+            <p style="margin-bottom: 15px;">
+                <strong>Sparsity</strong> reduces computation by setting a portion of model weights to exactly zero. NVIDIA's sparse Tensor Cores support 2:4 structured sparsity, where exactly 2 out of every 4 consecutive weights are zero. This structured pattern allows hardware to skip computations for zero weights, achieving up to 2x theoretical speedup while storing only the non-zero weights plus a small index overhead.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>2:4 Structured Sparsity Explained:</strong> In 2:4 sparsity, weights are processed in groups of 4. Within each group, exactly 2 weights are pruned to zero based on magnitude—the smallest two are removed. The remaining 2 non-zero weights are stored compactly, along with a 2-bit index indicating their positions. For example, weights <code>[0.5, -0.1, 0.8, 0.2]</code> become <code>[0.5, 0, 0.8, 0]</code> stored as <code>[0.5, 0.8]</code> with index <code>[0, 2]</code>. This achieves 50% weight reduction with predictable memory layout.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>Hardware Acceleration:</strong> NVIDIA Ampere and later GPUs have Sparse Tensor Cores that exploit this pattern. During matrix multiplication, the hardware reads only the non-zero weights and uses the index to correctly align them with input activations. Since exactly half the weights are zero, the Tensor Core performs half the multiply-accumulate operations, achieving up to 2x speedup for compute-bound operations. The actual speedup (1.3-1.6x in practice) is lower due to memory bandwidth and other overheads.
+            </p>
+            <p style="margin-bottom: 15px;">
+                <strong>Pruning Methods:</strong> Several algorithms exist for inducing 2:4 sparsity. <em>Magnitude pruning</em> simply zeros the smallest weights in each group—fast but often hurts accuracy. <em>SparseGPT</em> uses second-order information (Hessian) to choose which weights to prune while compensating remaining weights to minimize output change—better accuracy but slower. <em>Wanda</em> (Weights and Activations) considers both weight magnitude and activation magnitude, similar to AWQ's insight. All methods benefit significantly from post-pruning fine-tuning.
+            </p>
+            <p style="margin-bottom: 15px;">
+                The critical insight from benchmarks is that <strong>sparsity without fine-tuning causes severe accuracy degradation</strong> (validation loss jumping from 0.721 to 2.724 in Llama 2-70B). However, combining sparsity with fine-tuning on target data recovers most accuracy (0.721 → 1.01) while maintaining significant speedups. Sparsity can be combined with quantization (e.g., FP8 + sparsity) for compound gains—the MLPerf Inference v4.0 submission used this combination to achieve record performance.
+            </p>
+            <p style="font-size: 0.9rem; color: var(--text-secondary);">
+                Reference: <a href="https://developer.nvidia.com/blog/accelerating-inference-with-sparsity-using-ampere-and-tensorrt/" target="_blank" style="color: var(--accent-blue);">NVIDIA Sparsity Guide</a> |
+                <a href="https://arxiv.org/abs/2301.00774" target="_blank" style="color: var(--accent-blue);">SparseGPT (Frantar & Alistarh, 2023)</a> |
+                <a href="https://arxiv.org/abs/2306.11695" target="_blank" style="color: var(--accent-blue);">Wanda (Sun et al., 2023)</a>
+            </p>
+        </div>
+
+        <!-- PTQ for LLMs -->
+        <div class="section">
+            <h2><span class="icon">🔢</span> Post-Training Quantization for LLMs</h2>
+            <p>Tested on H200 with TensorRT-LLM v0.15. Input: 2048 tokens, Output: 128 tokens.</p>
+            
+            <h3>Llama 3.1-8B Performance</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Batch Size</th>
+                        <th>BF16 (baseline)</th>
+                        <th>FP8</th>
+                        <th>INT4 AWQ</th>
+                        <th>W4A8 AWQ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>173.8 tok/s</td>
+                        <td class="highlight">245 tok/s (1.41x)</td>
+                        <td>231.8 tok/s (1.33x)</td>
+                        <td>239.7 tok/s (1.38x)</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>803.1 tok/s</td>
+                        <td class="highlight">1,051 tok/s (1.31x)</td>
+                        <td>599.7 tok/s (0.75x)</td>
+                        <td>801.7 tok/s (1.00x)</td>
+                    </tr>
+                    <tr>
+                        <td>64</td>
+                        <td>1,679.7 tok/s</td>
+                        <td class="highlight">2,191 tok/s (1.30x)</td>
+                        <td>1,392.8 tok/s (0.83x)</td>
+                        <td>1,930.9 tok/s (1.15x)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Llama 3.1-70B Performance (GPU-count normalized)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Batch Size</th>
+                        <th>BF16 TP2 (baseline)</th>
+                        <th>FP8 TP1</th>
+                        <th>INT4 AWQ TP1</th>
+                        <th>W4A8 AWQ TP1</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>45.8 tok/s</td>
+                        <td>43.5 tok/s (1.90x)</td>
+                        <td>44.1 tok/s (1.93x)</td>
+                        <td class="highlight">46.3 tok/s (2.02x)</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>182.6 tok/s</td>
+                        <td class="highlight">182.1 tok/s (1.99x)</td>
+                        <td>94.0 tok/s (1.03x)</td>
+                        <td>140.0 tok/s (1.53x)</td>
+                    </tr>
+                    <tr>
+                        <td>64</td>
+                        <td>401.5 tok/s</td>
+                        <td class="highlight">420.6 tok/s (2.10x)</td>
+                        <td>176.7 tok/s (0.88x)</td>
+                        <td>345.4 tok/s (1.72x)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Accuracy Impact (MMLU Loss vs BF16)</h3>
+            <div class="comparison-row">
+                <div class="comparison-item recommended">
+                    <h5>FP8</h5>
+                    <div class="value">0.38-1.5%</div>
+                    <div class="label">MMLU loss — Recommended for H100</div>
+                </div>
+                <div class="comparison-item">
+                    <h5>INT4 AWQ</h5>
+                    <div class="value">1.1-5.7%</div>
+                    <div class="label">MMLU loss — Use when memory constrained</div>
+                </div>
+                <div class="comparison-item">
+                    <h5>W4A8 AWQ</h5>
+                    <div class="value">1.2-6.0%</div>
+                    <div class="label">MMLU loss — Balanced approach</div>
+                </div>
+            </div>
+
+            <div class="note">
+                FP8 is the go-to choice for H100/H200. Use 4-bit AWQ when GPU memory is a constraint. Lower bit quantization may have better GPU-count-normalized throughput with fewer TP.
+            </div>
+        </div>
+
+        <!-- PTQ for Diffusion Models -->
+        <div class="section">
+            <h2><span class="icon">🎨</span> PTQ for Stable Diffusion</h2>
+            <p>Stable Diffusion XL 1.0 base, 1024×1024 resolution, 30 steps, batch size 1.</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>GPU</th>
+                        <th>INT8 Latency</th>
+                        <th>FP8 Latency</th>
+                        <th>INT8 Speedup</th>
+                        <th>FP8 Speedup</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>RTX 6000 Ada</td>
+                        <td>2,479 ms</td>
+                        <td>2,441 ms</td>
+                        <td class="highlight">1.43x</td>
+                        <td class="highlight">1.45x</td>
+                    </tr>
+                    <tr>
+                        <td>RTX 4090</td>
+                        <td>2,058 ms</td>
+                        <td>2,161 ms</td>
+                        <td class="highlight">1.20x</td>
+                        <td>1.14x</td>
+                    </tr>
+                    <tr>
+                        <td>L40S</td>
+                        <td>2,339 ms</td>
+                        <td>2,168 ms</td>
+                        <td>1.25x</td>
+                        <td class="highlight">1.35x</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- QAT -->
+        <div class="section">
+            <h2><span class="icon">🎯</span> Quantization-Aware Training (QAT)</h2>
+            <p>QAT trains the model knowing it will be quantized, preserving accuracy at ultra-low precision. Enables 4-bit inference on NVIDIA Blackwell.</p>
+            
+            <h3>Llama 2-7B Validation Loss Comparison</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>Dataset</th>
+                        <th>BF16 Baseline</th>
+                        <th>PTQ</th>
+                        <th>QAT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>INT4 Weight, FP16 Act</td>
+                        <td>samsum</td>
+                        <td>1.036</td>
+                        <td>1.059</td>
+                        <td class="highlight">1.044</td>
+                    </tr>
+                    <tr>
+                        <td>INT4 Weight, INT8 Act</td>
+                        <td>samsum</td>
+                        <td>1.036</td>
+                        <td>3.321</td>
+                        <td class="highlight">1.294</td>
+                    </tr>
+                    <tr>
+                        <td>INT4 Weight, FP16 Act</td>
+                        <td>dolly-15k</td>
+                        <td>1.151</td>
+                        <td>1.305</td>
+                        <td class="highlight">1.172</td>
+                    </tr>
+                    <tr>
+                        <td>INT4 Weight, INT8 Act</td>
+                        <td>dolly-15k</td>
+                        <td>1.151</td>
+                        <td>2.313</td>
+                        <td class="highlight">1.640</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="note">
+                QAT dramatically reduces validation loss compared to PTQ, especially for aggressive INT4 weight + INT8 activation quantization. Critical for accuracy-sensitive generative AI applications.
+            </div>
+        </div>
+
+        <!-- Sparsity -->
+        <div class="section">
+            <h2><span class="icon">🕸️</span> Sparsity</h2>
+            <p>Pruning weights to zero reduces compute. Llama 2-70B on H100, FP8, TP=1. Part of MLPerf Inference v4.0.</p>
+            
+            <h3>Performance Gains</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Batch Size</th>
+                        <th>Speedup vs Dense FP8</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>32</td>
+                        <td class="highlight">1.62x</td>
+                    </tr>
+                    <tr>
+                        <td>64</td>
+                        <td class="highlight">1.52x</td>
+                    </tr>
+                    <tr>
+                        <td>128</td>
+                        <td class="highlight">1.35x</td>
+                    </tr>
+                    <tr>
+                        <td>896 (MLPerf)</td>
+                        <td class="highlight">1.30x</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Accuracy: Fine-tuning is Essential</h3>
+            <div class="comparison-row">
+                <div class="comparison-item">
+                    <h5>FP8 Baseline</h5>
+                    <div class="value">0.721</div>
+                    <div class="label">Validation loss (Open-Orca)</div>
+                </div>
+                <div class="comparison-item">
+                    <h5>Sparsity (no finetune)</h5>
+                    <div class="value" style="color: var(--accent-red);">2.724</div>
+                    <div class="label">SparseGPT without fine-tuning</div>
+                </div>
+                <div class="comparison-item recommended">
+                    <h5>Sparsity + Finetune</h5>
+                    <div class="value">1.01</div>
+                    <div class="label">With fine-tuning — Recommended</div>
+                </div>
+            </div>
+
+            <div class="note">
+                Without fine-tuning, sparsity causes severe accuracy degradation (3.8x worse loss). Always fine-tune after applying sparsity.
+            </div>
+        </div>
+
+        <!-- Decision Guide -->
+        <div class="section">
+            <h2><span class="icon">🧭</span> When to Use What</h2>
+            
+            <div class="use-case">
+                <span class="use-case-icon">✓</span>
+                <div><strong>FP8 PTQ:</strong> Default choice for H100/H200. Minimal accuracy loss, consistent 1.3-2.1x speedup.</div>
+            </div>
+            
+            <div class="use-case">
+                <span class="use-case-icon">✓</span>
+                <div><strong>INT4 AWQ:</strong> GPU memory constrained. 4x memory reduction, allows larger models or fewer GPUs.</div>
+            </div>
+            
+            <div class="use-case">
+                <span class="use-case-icon">✓</span>
+                <div><strong>W4A8 AWQ:</strong> Balance between memory savings and throughput. Good for large batch inference.</div>
+            </div>
+            
+            <div class="use-case">
+                <span class="use-case-icon">✓</span>
+                <div><strong>QAT:</strong> Accuracy-critical applications at low precision. Required for 4-bit Blackwell deployment.</div>
+            </div>
+            
+            <div class="use-case">
+                <span class="use-case-icon">✓</span>
+                <div><strong>Sparsity + Fine-tuning:</strong> Maximum performance when you can afford fine-tuning compute.</div>
+            </div>
+
+            <h3>Typical Workflow</h3>
+            <div class="workflow">
+                <div class="workflow-step">Train Model</div>
+                <span class="workflow-arrow">→</span>
+                <div class="workflow-step">Calibrate (PTQ) or Fine-tune (QAT)</div>
+                <span class="workflow-arrow">→</span>
+                <div class="workflow-step">Export to TensorRT-LLM</div>
+                <span class="workflow-arrow">→</span>
+                <div class="workflow-step">Deploy</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

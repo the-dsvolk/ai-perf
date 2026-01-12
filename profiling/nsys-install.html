@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nsight Systems & CUPTI: Installation and Container Mounting Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        .border-nv-green { border-color: #76B900; }
+        
+        .code-block {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: pre-wrap;
+            font-size: 0.875rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+        .code-block .comment { color: #64748b; }
+        .code-block .keyword { color: #f472b6; }
+        .code-block .string { color: #a5f3fc; }
+        .code-block .variable { color: #fbbf24; }
+        .code-block .command { color: #34d399; }
+        .code-block .flag { color: #818cf8; }
+        .code-block .path { color: #fb923c; }
+        
+        .info-card {
+            background: linear-gradient(135deg, #1e3a2f 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #76B900;
+        }
+        .warning-card {
+            background: linear-gradient(135deg, #451a03 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #f59e0b;
+        }
+        .danger-card {
+            background: linear-gradient(135deg, #450a0a 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #ef4444;
+        }
+        
+        .step-number {
+            width: 2.5rem;
+            height: 2.5rem;
+            background: linear-gradient(135deg, #76B900 0%, #4d7a00 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        
+        .diagram-container {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+        }
+        
+        .mount-arrow {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .copy-btn {
+            transition: all 0.2s ease;
+        }
+        .copy-btn:hover {
+            background-color: #76B900;
+            color: #0f172a;
+        }
+        
+        nav a {
+            transition: all 0.2s ease;
+        }
+        nav a:hover {
+            color: #76B900;
+        }
+        
+        .toc-link {
+            border-left: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .toc-link:hover {
+            border-left-color: #76B900;
+            background: rgba(118, 185, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-6xl">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <div class="inline-flex items-center gap-3 mb-4">
+                <svg class="w-10 h-10 nv-green" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white">Nsight Systems & CUPTI</h1>
+            </div>
+            <p class="text-xl text-slate-400">Installation and Container Mounting Guide</p>
+            <p class="mt-2 text-sm text-slate-500">Mounting custom profiler versions into containerized GPU workloads</p>
+        </header>
+
+        <div class="grid lg:grid-cols-4 gap-8">
+            <!-- Table of Contents Sidebar -->
+            <aside class="lg:col-span-1">
+                <nav class="sticky top-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Contents</h2>
+                    <ul class="space-y-1 text-sm">
+                        <li><a href="#why-mount" class="toc-link block py-1.5 px-3 rounded text-slate-300">Why Mount Custom Versions?</a></li>
+                        <li><a href="#architecture" class="toc-link block py-1.5 px-3 rounded text-slate-300">Architecture Overview</a></li>
+                        <li><a href="#nsys-install" class="toc-link block py-1.5 px-3 rounded text-slate-300">Installing Nsight Systems</a></li>
+                        <li><a href="#cupti-install" class="toc-link block py-1.5 px-3 rounded text-slate-300">Installing CUPTI Library</a></li>
+                        <li><a href="#container-mounting" class="toc-link block py-1.5 px-3 rounded text-slate-300">Container Mounting</a></li>
+                        <li><a href="#enroot" class="toc-link block py-1.5 px-3 rounded text-slate-300">Enroot Configuration</a></li>
+                        <li><a href="#docker" class="toc-link block py-1.5 px-3 rounded text-slate-300">Docker Configuration</a></li>
+                        <li><a href="#verification" class="toc-link block py-1.5 px-3 rounded text-slate-300">Verification</a></li>
+                        <li><a href="#troubleshooting" class="toc-link block py-1.5 px-3 rounded text-slate-300">Troubleshooting</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="lg:col-span-3 space-y-12">
+                
+                <!-- Why Mount Custom Versions -->
+                <section id="why-mount" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Why Mount Custom Profiler Versions?
+                    </h2>
+                    
+                    <div class="info-card p-6 mb-6">
+                        <h3 class="font-semibold text-white mb-3">The Problem</h3>
+                        <p class="text-slate-300">Container images (like NVIDIA NeMo, PyTorch NGC, etc.) ship with pre-installed versions of <strong class="nv-green">Nsight Systems (nsys)</strong> and <strong class="nv-green">CUPTI</strong> libraries. However, these bundled versions may contain bugs or lack features needed for your specific profiling requirements.</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+                            <h4 class="font-semibold text-white mb-3 flex items-center gap-2">
+                                <span class="text-red-400">✗</span> Container's Built-in Version
+                            </h4>
+                            <ul class="text-sm text-slate-400 space-y-2">
+                                <li>• May contain known bugs</li>
+                                <li>• Cannot be updated without rebuilding image</li>
+                                <li>• Version locked to container release</li>
+                                <li>• Missing latest profiling features</li>
+                            </ul>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-5 border border-nv-green/30">
+                            <h4 class="font-semibold text-white mb-3 flex items-center gap-2">
+                                <span class="nv-green">✓</span> Mounted Custom Version
+                            </h4>
+                            <ul class="text-sm text-slate-400 space-y-2">
+                                <li>• Use any version you need</li>
+                                <li>• Quickly swap versions without rebuilding</li>
+                                <li>• Apply bug fixes immediately</li>
+                                <li>• Test new profiler features</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Architecture Overview -->
+                <section id="architecture" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Architecture Overview
+                    </h2>
+                    
+                    <div class="diagram-container p-6">
+                        <div class="flex flex-col lg:flex-row gap-8 items-center justify-center">
+                            <!-- Host System -->
+                            <div class="bg-slate-700/50 rounded-xl p-6 border border-slate-600 w-full lg:w-64">
+                                <h4 class="text-center font-semibold text-white mb-4">Host System</h4>
+                                <div class="space-y-3">
+                                    <div class="bg-nv-green/20 border border-nv-green/40 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-slate-400 mb-1">Nsight Systems</div>
+                                        <code class="text-xs text-nv-green">/opt/tools/nsys/2025.5.1/</code>
+                                    </div>
+                                    <div class="bg-amber-500/20 border border-amber-500/40 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-slate-400 mb-1">CUPTI Library</div>
+                                        <code class="text-xs text-amber-400">/opt/tools/cupti/13.0.85/</code>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mount Arrow -->
+                            <div class="flex flex-col items-center gap-2 text-slate-500">
+                                <div class="mount-arrow text-4xl nv-green">→</div>
+                                <div class="text-xs text-center">
+                                    <div>Container</div>
+                                    <div>Mount</div>
+                                </div>
+                            </div>
+
+                            <!-- Container -->
+                            <div class="bg-slate-700/50 rounded-xl p-6 border border-slate-600 w-full lg:w-64">
+                                <h4 class="text-center font-semibold text-white mb-4">Container</h4>
+                                <div class="space-y-3">
+                                    <div class="bg-red-500/20 border border-red-500/40 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-red-300 mb-1">Original (Shadowed)</div>
+                                        <code class="text-xs text-red-400 line-through">/usr/local/.../nsys</code>
+                                    </div>
+                                    <div class="bg-nv-green/20 border border-nv-green/40 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-slate-400 mb-1">Mounted (Active)</div>
+                                        <code class="text-xs text-nv-green">Host version active!</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-center text-xs text-slate-500 mt-6">The mount overlays the container's built-in version with your custom version from the host</p>
+                    </div>
+                </section>
+
+                <!-- Installing Nsight Systems -->
+                <section id="nsys-install" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Installing Nsight Systems
+                    </h2>
+
+                    <!-- Step 1: Download -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="step-number">1</div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Download the Installer</h3>
+                                <p class="text-slate-400 text-sm mt-1">Download from NVIDIA Developer portal</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ml-14">
+                            <div class="code-block">
+<span class="comment"># Set your desired version (include build number)</span>
+<span class="variable">NSYS_VERSION</span>=<span class="string">"2025.5.1.121-3638078"</span>
+
+<span class="comment"># For x86_64 systems:</span>
+<span class="variable">NSYS_URL</span>=<span class="string">"https://developer.download.nvidia.com/devtools/nsight-systems/NsightSystems-linux-public-<span class="variable">${NSYS_VERSION}</span>.run"</span>
+
+<span class="comment"># For ARM64/aarch64 systems (Grace Hopper, etc.):</span>
+<span class="variable">NSYS_URL</span>=<span class="string">"https://developer.download.nvidia.com/devtools/nsight-systems/NsightSystems-linux-sbsa-public-<span class="variable">${NSYS_VERSION}</span>.run"</span>
+
+<span class="comment"># Download</span>
+<span class="command">wget</span> <span class="flag">-O</span> <span class="path">nsys_installer.run</span> <span class="string">"${NSYS_URL}"</span>
+<span class="command">chmod</span> <span class="flag">+x</span> <span class="path">nsys_installer.run</span></div>
+                            
+                            <div class="mt-4 text-sm text-slate-500">
+                                <strong>Finding versions:</strong> Visit <a href="https://developer.nvidia.com/nsight-systems" target="_blank" class="nv-green hover:underline">developer.nvidia.com/nsight-systems</a> for available versions
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Install -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="step-number">2</div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Run the Installer</h3>
+                                <p class="text-slate-400 text-sm mt-1">Install to a custom directory (non-interactive mode)</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ml-14">
+                            <div class="code-block">
+<span class="comment"># Define installation directory</span>
+<span class="variable">INSTALL_DIR</span>=<span class="string">"/opt/tools/nsys/<span class="variable">${NSYS_VERSION}</span>"</span>
+
+<span class="comment"># Create installation directory</span>
+<span class="command">mkdir</span> <span class="flag">-p</span> <span class="string">"${INSTALL_DIR}"</span>
+
+<span class="comment"># Run installer in non-interactive mode</span>
+<span class="comment"># --target: temporary extraction location</span>
+<span class="comment"># -noprompt: no user interaction</span>
+<span class="comment"># -targetpath: final installation location</span>
+<span class="command">./nsys_installer.run</span> <span class="flag">--target</span> <span class="path">/tmp/nsys_temp</span> <span class="flag">--</span> <span class="flag">-noprompt</span> <span class="flag">-targetpath</span> <span class="string">"${INSTALL_DIR}"</span>
+
+<span class="comment"># Cleanup temporary files</span>
+<span class="command">rm</span> <span class="flag">-rf</span> <span class="path">/tmp/nsys_temp</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Verify -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="step-number">3</div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Verify Installation</h3>
+                                <p class="text-slate-400 text-sm mt-1">Check that nsys binary exists and works</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ml-14">
+                            <div class="code-block">
+<span class="comment"># Verify binary exists</span>
+<span class="command">ls</span> <span class="flag">-la</span> <span class="string">"${INSTALL_DIR}/bin/nsys"</span>
+
+<span class="comment"># Check version</span>
+<span class="string">"${INSTALL_DIR}/bin/nsys"</span> <span class="flag">--version</span>
+
+<span class="comment"># Expected output:</span>
+<span class="comment"># NVIDIA Nsight Systems version 2025.5.1.121-250505693968v0</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Directory Structure -->
+                    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 ml-14">
+                        <h4 class="font-semibold text-white mb-3">Installation Directory Structure</h4>
+                        <div class="code-block text-xs">
+<span class="path">/opt/tools/nsys/2025.5.1.121-3638078/</span>
+├── <span class="path">bin/</span>
+│   └── <span class="command">nsys</span>              <span class="comment"># Main profiler binary</span>
+├── <span class="path">target-linux-x64/</span>     <span class="comment"># x86_64 target libraries</span>
+│   ├── <span class="path">libcupti.so.13.0</span>
+│   └── ...
+├── <span class="path">target-linux-sbsa-armv8/</span>  <span class="comment"># ARM64 target libraries</span>
+│   ├── <span class="path">libcupti-sbsa.so.13.0</span>
+│   └── ...
+└── <span class="path">host-linux-x64/</span>       <span class="comment"># Host-side components</span></div>
+                    </div>
+                </section>
+
+                <!-- Installing CUPTI -->
+                <section id="cupti-install" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-amber-500 rounded-full"></span>
+                        Installing CUPTI Library
+                    </h2>
+
+                    <div class="warning-card p-5 mb-6">
+                        <h4 class="font-semibold text-amber-400 mb-2">When to Install CUPTI Separately?</h4>
+                        <p class="text-slate-300 text-sm">CUPTI (CUDA Profiling Tools Interface) is included with Nsight Systems. Install it separately only when you need a specific CUPTI version that differs from what's in your nsys installation or container.</p>
+                    </div>
+
+                    <!-- Step 1: Download CUPTI -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="step-number text-amber-900 bg-gradient-to-br from-amber-400 to-amber-600">1</div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Download CUPTI Archive</h3>
+                                <p class="text-slate-400 text-sm mt-1">From NVIDIA CUDA redistributables</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ml-14">
+                            <div class="code-block">
+<span class="comment"># Set CUPTI version</span>
+<span class="variable">CUPTI_VERSION</span>=<span class="string">"13.0.85"</span>
+
+<span class="comment"># For x86_64:</span>
+<span class="variable">CUPTI_URL</span>=<span class="string">"https://developer.download.nvidia.com/compute/cuda/redist/cuda_cupti/linux-x86_64/cuda_cupti-linux-x86_64-<span class="variable">${CUPTI_VERSION}</span>-archive.tar.xz"</span>
+
+<span class="comment"># For ARM64/aarch64:</span>
+<span class="variable">CUPTI_URL</span>=<span class="string">"https://developer.download.nvidia.com/compute/cuda/redist/cuda_cupti/linux-sbsa/cuda_cupti-linux-sbsa-<span class="variable">${CUPTI_VERSION}</span>-archive.tar.xz"</span>
+
+<span class="comment"># Download</span>
+<span class="command">wget</span> <span class="flag">-O</span> <span class="path">cupti.tar.xz</span> <span class="string">"${CUPTI_URL}"</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Extract -->
+                    <div class="mb-8">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="step-number text-amber-900 bg-gradient-to-br from-amber-400 to-amber-600">2</div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Extract to Installation Directory</h3>
+                                <p class="text-slate-400 text-sm mt-1">Extract and strip top-level directory</p>
+                            </div>
+                        </div>
+                        
+                        <div class="ml-14">
+                            <div class="code-block">
+<span class="comment"># Create installation directory</span>
+<span class="variable">CUPTI_DIR</span>=<span class="string">"/opt/tools/cupti/<span class="variable">${CUPTI_VERSION}</span>"</span>
+<span class="command">mkdir</span> <span class="flag">-p</span> <span class="string">"${CUPTI_DIR}"</span>
+
+<span class="comment"># Extract (strip first directory level)</span>
+<span class="command">tar</span> <span class="flag">-xf</span> <span class="path">cupti.tar.xz</span> <span class="flag">-C</span> <span class="string">"${CUPTI_DIR}"</span> <span class="flag">--strip-components=1</span>
+
+<span class="comment"># Verify</span>
+<span class="command">ls</span> <span class="flag">-la</span> <span class="string">"${CUPTI_DIR}/lib/"</span>
+<span class="comment"># Should show: libcupti.so, libcupti.so.13, libcupti.so.13.0.85, etc.</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Container Mounting -->
+                <section id="container-mounting" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Container Mounting Strategy
+                    </h2>
+
+                    <div class="info-card p-5 mb-6">
+                        <h4 class="font-semibold text-white mb-2">Key Concept: Mount Over Container Path</h4>
+                        <p class="text-slate-300 text-sm">To replace the container's built-in nsys, you mount your host directory <strong>over the exact path</strong> where nsys is installed inside the container. This "shadows" the original installation.</p>
+                    </div>
+
+                    <!-- Finding Container Path -->
+                    <div class="mb-8">
+                        <h3 class="text-lg font-semibold text-white mb-4">Finding the Container's Nsys Path</h3>
+                        
+                        <div class="code-block mb-4">
+<span class="comment"># Run a shell in the container to find nsys location</span>
+<span class="command">docker</span> run <span class="flag">--rm</span> <span class="flag">-it</span> nvcr.io/nvidia/nemo:25.07.01 <span class="command">bash</span>
+
+<span class="comment"># Inside container, find nsys</span>
+<span class="command">which</span> nsys
+<span class="comment"># Output: /usr/local/cuda-12.9/NsightSystems-cli-2025.1.1/bin/nsys</span>
+
+<span class="comment"># The parent directory is what you need to mount over:</span>
+<span class="comment"># /usr/local/cuda-12.9/NsightSystems-cli-2025.1.1</span></div>
+
+                        <div class="bg-slate-800 rounded-xl p-5 border border-slate-700">
+                            <h4 class="font-semibold text-white mb-3">Common Container Nsys Paths</h4>
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-left text-slate-400 border-b border-slate-700">
+                                        <th class="pb-2">Container Image</th>
+                                        <th class="pb-2">Nsys Install Path</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-slate-300">
+                                    <tr class="border-b border-slate-700/50">
+                                        <td class="py-2"><code class="text-xs">nvcr.io/nvidia/nemo:25.07.01</code></td>
+                                        <td class="py-2"><code class="text-xs nv-green">/usr/local/cuda-12.9/NsightSystems-cli-2025.1.1</code></td>
+                                    </tr>
+                                    <tr class="border-b border-slate-700/50">
+                                        <td class="py-2"><code class="text-xs">nvcr.io/nvidia/nemo:25.09.00</code></td>
+                                        <td class="py-2"><code class="text-xs nv-green">/usr/local/cuda-12.9/NsightSystems-cli-2025.4.1</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-2"><code class="text-xs">nvcr.io/nvidia/pytorch:xx.xx</code></td>
+                                        <td class="py-2"><code class="text-xs text-slate-500">Check with <code>which nsys</code></code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Enroot Configuration -->
+                <section id="enroot" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-blue-500 rounded-full"></span>
+                        Enroot/Pyxis Configuration (SLURM)
+                    </h2>
+
+                    <p class="text-slate-400 mb-6">Enroot is commonly used with SLURM clusters and Pyxis plugin for containerized HPC workloads.</p>
+
+                    <div class="code-block mb-6">
+<span class="comment"># Mount format: host_path:container_path</span>
+
+<span class="comment"># Mount nsys installation</span>
+<span class="variable">NSYS_MOUNT</span>=<span class="string">"/opt/tools/nsys/2025.5.1.121-3638078:/usr/local/cuda-12.9/NsightSystems-cli-2025.1.1"</span>
+
+<span class="comment"># Mount CUPTI library (if needed separately)</span>
+<span class="variable">CUPTI_MOUNT</span>=<span class="string">"/opt/tools/cupti/13.0.85/lib/libcupti.so.13.0.85:/usr/local/cuda-12.9/NsightSystems-cli-2025.4.1/target-linux-x64/libcupti.so.13.0"</span>
+
+<span class="comment"># Combine mounts (comma-separated)</span>
+<span class="variable">CONTAINER_MOUNTS</span>=<span class="string">"${NSYS_MOUNT},${CUPTI_MOUNT}"</span>
+
+<span class="comment"># Use with srun/sbatch</span>
+<span class="command">srun</span> <span class="flag">--container-image</span>=nvcr.io/nvidia/nemo:25.07.01 \
+     <span class="flag">--container-mounts</span>=<span class="string">"${CONTAINER_MOUNTS}"</span> \
+     <span class="command">nsys</span> profile <span class="flag">--stats=true</span> ./my_training_script.py</div>
+
+                    <div class="info-card p-5">
+                        <h4 class="font-semibold text-white mb-2">Environment Variable Approach</h4>
+                        <p class="text-slate-300 text-sm mb-3">Many job launchers support passing mounts via environment variables:</p>
+                        <div class="code-block text-xs">
+<span class="comment"># Set mounts as environment variable</span>
+<span class="keyword">export</span> <span class="variable">RUN_CONF_MOUNTS</span>=<span class="string">"${NSYS_MOUNT}"</span>
+
+<span class="comment"># Job launcher reads RUN_CONF_MOUNTS and applies</span></div>
+                    </div>
+                </section>
+
+                <!-- Docker Configuration -->
+                <section id="docker" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-cyan-500 rounded-full"></span>
+                        Docker/Podman Configuration
+                    </h2>
+
+                    <div class="code-block mb-6">
+<span class="comment"># Docker mount format: -v host_path:container_path</span>
+
+<span class="comment"># Define paths</span>
+<span class="variable">HOST_NSYS</span>=<span class="string">"/opt/tools/nsys/2025.5.1.121-3638078"</span>
+<span class="variable">CONTAINER_NSYS</span>=<span class="string">"/usr/local/cuda-12.9/NsightSystems-cli-2025.1.1"</span>
+
+<span class="comment"># Run container with nsys mount</span>
+<span class="command">docker</span> run <span class="flag">--gpus</span> all <span class="flag">--rm</span> <span class="flag">-it</span> \
+    <span class="flag">-v</span> <span class="string">"${HOST_NSYS}:${CONTAINER_NSYS}"</span> \
+    nvcr.io/nvidia/nemo:25.07.01 \
+    <span class="command">nsys</span> <span class="flag">--version</span>
+
+<span class="comment"># Should output your custom version, not container's built-in</span></div>
+
+                    <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-6">
+                        <h4 class="font-semibold text-white mb-3">Docker Compose Example</h4>
+                        <div class="code-block text-xs">
+<span class="keyword">version</span>: <span class="string">'3.8'</span>
+<span class="keyword">services</span>:
+  <span class="keyword">training</span>:
+    <span class="keyword">image</span>: nvcr.io/nvidia/nemo:25.07.01
+    <span class="keyword">volumes</span>:
+      <span class="comment"># Mount custom nsys over container path</span>
+      - <span class="string">/opt/tools/nsys/2025.5.1:/usr/local/cuda-12.9/NsightSystems-cli-2025.1.1</span>
+      <span class="comment"># Your training code</span>
+      - <span class="string">./workspace:/workspace</span>
+    <span class="keyword">deploy</span>:
+      <span class="keyword">resources</span>:
+        <span class="keyword">reservations</span>:
+          <span class="keyword">devices</span>:
+            - <span class="keyword">driver</span>: nvidia
+              <span class="keyword">count</span>: all
+              <span class="keyword">capabilities</span>: [gpu]</div>
+                    </div>
+                </section>
+
+                <!-- Verification -->
+                <section id="verification" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Verification
+                    </h2>
+
+                    <div class="code-block mb-6">
+<span class="comment"># Inside the container, verify the mounted version is active</span>
+
+<span class="comment"># Check nsys version</span>
+<span class="command">nsys</span> <span class="flag">--version</span>
+<span class="comment"># Should show your custom version: NVIDIA Nsight Systems version 2025.5.1.xxx</span>
+
+<span class="comment"># Check which binary is being used</span>
+<span class="command">which</span> nsys
+<span class="comment"># Should point to the mounted path</span>
+
+<span class="comment"># Verify CUPTI library (if mounted)</span>
+<span class="command">ldd</span> $(which nsys) | <span class="command">grep</span> cupti
+<span class="comment"># Should show your mounted library path</span>
+
+<span class="comment"># Test a quick profile</span>
+<span class="command">nsys</span> profile <span class="flag">-o</span> <span class="path">test_profile</span> <span class="flag">--stats=true</span> <span class="command">python</span> <span class="flag">-c</span> <span class="string">"import torch; x = torch.randn(1000, 1000, device='cuda'); torch.cuda.synchronize()"</span>
+
+<span class="comment"># If successful, you'll see profiling output and test_profile.nsys-rep file</span></div>
+
+                    <div class="info-card p-5">
+                        <h4 class="font-semibold text-white mb-2">Version Mismatch Check</h4>
+                        <p class="text-slate-300 text-sm">If <code class="bg-slate-700 px-1.5 py-0.5 rounded">nsys --version</code> shows the container's original version, the mount didn't work. Common causes:</p>
+                        <ul class="text-slate-400 text-sm mt-2 space-y-1">
+                            <li>• Incorrect container path (check <code class="bg-slate-700 px-1.5 py-0.5 rounded">which nsys</code> in unmodified container)</li>
+                            <li>• Mount syntax error</li>
+                            <li>• Host path doesn't exist or isn't accessible</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- Troubleshooting -->
+                <section id="troubleshooting" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-red-500 rounded-full"></span>
+                        Troubleshooting
+                    </h2>
+
+                    <div class="space-y-4">
+                        <div class="danger-card p-5">
+                            <h4 class="font-semibold text-red-400 mb-2">Error: "nsys: error while loading shared libraries"</h4>
+                            <p class="text-slate-300 text-sm mb-2">The mounted nsys can't find required libraries.</p>
+                            <p class="text-slate-400 text-sm"><strong>Solution:</strong> Mount the entire nsys installation directory, not just the binary. The directory contains required libraries and dependencies.</p>
+                        </div>
+
+                        <div class="danger-card p-5">
+                            <h4 class="font-semibold text-red-400 mb-2">Error: "CUPTI_ERROR_INSUFFICIENT_PRIVILEGES"</h4>
+                            <p class="text-slate-300 text-sm mb-2">Profiling requires elevated privileges.</p>
+                            <p class="text-slate-400 text-sm"><strong>Solution:</strong> Run with <code class="bg-slate-700 px-1.5 py-0.5 rounded">--privileged</code> or set <code class="bg-slate-700 px-1.5 py-0.5 rounded">--cap-add=SYS_ADMIN</code> in Docker. For SLURM, ensure node configuration allows profiling.</p>
+                        </div>
+
+                        <div class="danger-card p-5">
+                            <h4 class="font-semibold text-red-400 mb-2">Error: Architecture mismatch</h4>
+                            <p class="text-slate-300 text-sm mb-2">x86_64 nsys on ARM64 container (or vice versa).</p>
+                            <p class="text-slate-400 text-sm"><strong>Solution:</strong> Download the correct architecture version. Use <code class="bg-slate-700 px-1.5 py-0.5 rounded">sbsa</code> for ARM64, <code class="bg-slate-700 px-1.5 py-0.5 rounded">linux-public</code> for x86_64.</p>
+                        </div>
+
+                        <div class="warning-card p-5">
+                            <h4 class="font-semibold text-amber-400 mb-2">Tip: Preserve Original as Fallback</h4>
+                            <p class="text-slate-300 text-sm">Keep your mount configuration modular so you can quickly disable it if issues arise. Use environment variables or config files to toggle mounts.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Quick Reference -->
+                <section class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                    <h3 class="text-xl font-bold text-white mb-4">Quick Reference</h3>
+                    
+                    <div class="grid md:grid-cols-2 gap-6 text-sm">
+                        <div>
+                            <h4 class="font-semibold text-slate-300 mb-2">Nsys Download URLs</h4>
+                            <ul class="text-slate-400 space-y-1 text-xs">
+                                <li><strong>Base URL:</strong> <code class="nv-green">developer.download.nvidia.com/devtools/nsight-systems/</code></li>
+                                <li><strong>x86_64:</strong> <code>NsightSystems-linux-public-{version}.run</code></li>
+                                <li><strong>ARM64:</strong> <code>NsightSystems-linux-sbsa-public-{version}.run</code></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-300 mb-2">CUPTI Download URLs</h4>
+                            <ul class="text-slate-400 space-y-1 text-xs">
+                                <li><strong>Base:</strong> <code class="text-amber-400">developer.download.nvidia.com/compute/cuda/redist/cuda_cupti/</code></li>
+                                <li><strong>x86_64:</strong> <code>linux-x86_64/cuda_cupti-linux-x86_64-{version}-archive.tar.xz</code></li>
+                                <li><strong>ARM64:</strong> <code>linux-sbsa/cuda_cupti-linux-sbsa-{version}-archive.tar.xz</code></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 pt-6 border-t border-slate-700">
+                        <h4 class="font-semibold text-slate-300 mb-2">Installer Flags Reference</h4>
+                        <div class="code-block text-xs">
+<span class="command">./nsys_installer.run</span> <span class="flag">--help</span>   <span class="comment"># Show all options</span>
+<span class="flag">--target</span> <span class="path">DIR</span>                   <span class="comment"># Temporary extraction directory</span>
+<span class="flag">--</span>                             <span class="comment"># Separator before installer-specific flags</span>
+<span class="flag">-noprompt</span>                      <span class="comment"># Non-interactive installation</span>
+<span class="flag">-targetpath</span> <span class="path">DIR</span>                <span class="comment"># Final installation directory</span></div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-16 pt-8 border-t border-slate-800 text-sm text-slate-500">
+            <p>Part of the <a href="../index.html" class="nv-green hover:underline">AI Performance Design Guide</a></p>
+            <p class="mt-2">© 2025. For educational purposes.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Smooth scroll for TOC links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

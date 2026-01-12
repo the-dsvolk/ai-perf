@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Performance Bottlenecks - Diagnosis & Remedies</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background: linear-gradient(135deg, #0c0c1d 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        
+        .bottleneck-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        .bottleneck-card:hover {
+            border-color: rgba(118, 185, 0, 0.5);
+            box-shadow: 0 0 30px rgba(118, 185, 0, 0.08);
+            transform: translateY(-2px);
+        }
+        
+        .memory-bound { border-left: 4px solid #f59e0b; }
+        .memory-bound .icon { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+        
+        .compute-bound { border-left: 4px solid #10b981; }
+        .compute-bound .icon { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+        
+        .latency-bound { border-left: 4px solid #ef4444; }
+        .latency-bound .icon { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+        
+        .underutilized { border-left: 4px solid #8b5cf6; }
+        .underutilized .icon { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+        
+        .indicator-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: rgba(51, 65, 85, 0.6);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+        }
+        
+        .remedy-card {
+            background: linear-gradient(135deg, rgba(30, 58, 47, 0.4) 0%, rgba(30, 41, 59, 0.6) 100%);
+            border-radius: 0.75rem;
+            border: 1px solid rgba(118, 185, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+        .remedy-card:hover {
+            border-color: rgba(118, 185, 0, 0.4);
+            background: linear-gradient(135deg, rgba(30, 58, 47, 0.6) 0%, rgba(30, 41, 59, 0.7) 100%);
+        }
+        
+        .code-inline {
+            background-color: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.375rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+        }
+        
+        .summary-table {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        
+        .summary-table th {
+            background: rgba(15, 23, 42, 0.8);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.7rem;
+        }
+        
+        .summary-table td {
+            border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+        }
+        
+        .summary-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .toc-link {
+            border-left: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .toc-link:hover {
+            border-left-color: #76B900;
+            background: rgba(118, 185, 0, 0.1);
+        }
+        
+        .pill-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .pill-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .pill-red { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .pill-purple { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
+        
+        .visual-meter {
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(51, 65, 85, 0.5);
+            overflow: hidden;
+        }
+        .visual-meter-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .expand-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, padding 0.3s ease;
+        }
+        .expand-content.expanded {
+            max-height: 2000px;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <div class="inline-flex items-center gap-3 mb-4">
+                <svg class="w-10 h-10 nv-green" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white">GPU Performance Bottlenecks</h1>
+            </div>
+            <p class="text-xl text-slate-400">Diagnosis, Profiler Indicators & Remedies</p>
+            <p class="mt-2 text-sm text-slate-500">Based on Table 8-2 from GPU Performance Engineering</p>
+        </header>
+
+        <div class="grid lg:grid-cols-4 gap-8">
+            
+            <!-- Sidebar TOC -->
+            <aside class="lg:col-span-1">
+                <nav class="sticky top-6 bg-slate-800/30 rounded-xl p-4 border border-slate-700/50 backdrop-blur-sm">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Quick Navigation</h2>
+                    <ul class="space-y-1 text-sm">
+                        <li><a href="#summary" class="toc-link block py-1.5 px-3 rounded text-slate-300">Summary Table</a></li>
+                        <li><a href="#memory-bound" class="toc-link block py-1.5 px-3 rounded text-slate-300">🟠 Memory Bound</a></li>
+                        <li><a href="#compute-bound" class="toc-link block py-1.5 px-3 rounded text-slate-300">🟢 Compute Bound</a></li>
+                        <li><a href="#latency-bound" class="toc-link block py-1.5 px-3 rounded text-slate-300">🔴 Latency Bound</a></li>
+                        <li><a href="#underutilized" class="toc-link block py-1.5 px-3 rounded text-slate-300">🟣 Underutilized</a></li>
+                        <li><a href="#diagnosis-flow" class="toc-link block py-1.5 px-3 rounded text-slate-300">Diagnosis Flow</a></li>
+                    </ul>
+                    
+                    <div class="mt-6 pt-4 border-t border-slate-700/50">
+                        <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Visual Legend</h3>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full bg-amber-500"></div>
+                                <span class="text-slate-400">Memory Bound</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full bg-emerald-500"></div>
+                                <span class="text-slate-400">Compute Bound</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                                <span class="text-slate-400">Latency Bound</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-3 h-3 rounded-full bg-purple-500"></div>
+                                <span class="text-slate-400">Underutilized</span>
+                            </div>
+                        </div>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="lg:col-span-3 space-y-12">
+
+                <!-- Summary Table -->
+                <section id="summary" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Quick Reference Table
+                    </h2>
+                    
+                    <div class="summary-table overflow-x-auto border border-slate-700/50">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-slate-400">
+                                    <th class="p-4">Limiting Factor</th>
+                                    <th class="p-4">Description</th>
+                                    <th class="p-4">Profiler Indicators</th>
+                                    <th class="p-4">Key Remedies</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr class="hover:bg-slate-800/30 transition-colors">
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                            <span class="font-semibold text-amber-400">Memory Bound</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">Moving data at peak DRAM bandwidth but not enough compute per byte</td>
+                                    <td class="p-4">
+                                        <div class="space-y-1">
+                                            <div class="indicator-badge pill-amber">High Memory BW</div>
+                                            <div class="indicator-badge">Low FLOPS</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">Tiling, fusion, coalescing, caching</td>
+                                </tr>
+                                <tr class="hover:bg-slate-800/30 transition-colors">
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                            <span class="font-semibold text-emerald-400">Compute Bound</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">Memory latency hidden, ALUs are the bottleneck</td>
+                                    <td class="p-4">
+                                        <div class="space-y-1">
+                                            <div class="indicator-badge pill-green">High FLOPS</div>
+                                            <div class="indicator-badge">Low Memory Util</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">ILP, Tensor Cores, lower precision</td>
+                                </tr>
+                                <tr class="hover:bg-slate-800/30 transition-colors">
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                            <span class="font-semibold text-red-400">Latency Bound</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">Not enough concurrent work to hide load/store latencies</td>
+                                    <td class="p-4">
+                                        <div class="space-y-1">
+                                            <div class="indicator-badge pill-red">Low Achieved BW</div>
+                                            <div class="indicator-badge">High Stalls</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">Occupancy, ILP, prefetching</td>
+                                </tr>
+                                <tr class="hover:bg-slate-800/30 transition-colors">
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                                            <span class="font-semibold text-purple-400">Underutilized</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">SMs not fully occupied, both memory and compute idle</td>
+                                    <td class="p-4">
+                                        <div class="space-y-1">
+                                            <div class="indicator-badge pill-purple">Low Occupancy</div>
+                                            <div class="indicator-badge">Timeline Gaps</div>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-slate-400">More threads, batch work, streams</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Memory Bound -->
+                <section id="memory-bound" class="scroll-mt-6">
+                    <div class="bottleneck-card memory-bound p-6">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="icon w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                                📊
+                            </div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold text-amber-400 mb-2">Memory Bound</h2>
+                                <p class="text-slate-400">You're moving as much data as you can—close to peak DRAM bandwidth—but you don't have enough work per byte to fully utilize the ALUs.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Profiler Indicators -->
+                        <div class="mb-6">
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Profiler Indicators</h3>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Memory Bandwidth</span>
+                                        <span class="text-amber-400 font-bold">~80-95%</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-amber-500" style="width: 90%"></div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">Near peak DRAM bandwidth utilization</p>
+                                </div>
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Compute (FLOPS)</span>
+                                        <span class="text-slate-500 font-bold">~10-30%</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-slate-600" style="width: 20%"></div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">Low arithmetic intensity</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Remedies -->
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detailed Remedies</h3>
+                            <div class="space-y-3">
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Increase Arithmetic Intensity via Tiling</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Tiling (also called blocking) loads data into shared memory or registers once, then reuses it multiple times for computation.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Example: Matrix multiplication with tiles</p>
+                                            <code class="text-nv-green text-xs">
+// Load tile into shared memory<br>
+__shared__ float As[TILE_SIZE][TILE_SIZE];<br>
+As[ty][tx] = A[row * K + (t * TILE_SIZE + tx)];<br>
+__syncthreads();<br>
+// Compute using tile (multiple times)<br>
+for (int k = 0; k < TILE_SIZE; ++k)<br>
+&nbsp;&nbsp;sum += As[ty][k] * Bs[k][tx];
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Impact:</strong> Can reduce memory traffic by 10-100x for suitable algorithms. Each byte loaded from global memory is now used for many FLOPs instead of just one.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Kernel Fusion</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Combine multiple kernels into one to avoid intermediate writes to global memory. Data stays in registers or shared memory between operations.</p>
+                                        <div class="grid md:grid-cols-2 gap-4 mb-3">
+                                            <div class="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-red-400 mb-2">❌ Separate kernels</p>
+                                                <code class="text-xs text-slate-400">
+kernel1: y = matmul(A, x)<br>
+&nbsp;&nbsp;→ write y to DRAM<br>
+kernel2: z = relu(y)<br>
+&nbsp;&nbsp;→ read y from DRAM
+                                                </code>
+                                            </div>
+                                            <div class="bg-green-900/20 border border-green-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-green-400 mb-2">✓ Fused kernel</p>
+                                                <code class="text-xs text-slate-400">
+kernel: z = relu(matmul(A, x))<br>
+&nbsp;&nbsp;→ y stays in registers<br>
+&nbsp;&nbsp;→ only write z
+                                                </code>
+                                            </div>
+                                        </div>
+                                        <p><strong class="text-white">Tools:</strong> PyTorch <code class="code-inline">torch.compile</code>, Triton, custom CUDA kernels, FlashAttention pattern.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Improve Memory Coalescing</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Ensure threads in a warp access consecutive memory addresses. This allows the hardware to combine 32 separate requests into fewer transactions.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Coalesced vs non-coalesced access</p>
+                                            <code class="text-nv-green text-xs">
+// ✓ Coalesced: thread i accesses element i<br>
+float val = data[threadIdx.x];<br><br>
+// ❌ Strided: threads access non-consecutive elements<br>
+float val = data[threadIdx.x * stride];<br><br>
+// ❌ Random: unpredictable access pattern<br>
+float val = data[indices[threadIdx.x]];
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Check:</strong> Use NCU's "Excessive Sectors" metric to identify non-coalesced accesses. Aim for 32 bytes (1 sector) per 32 threads for FP32.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Leverage L2 and L1 Caching</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Structure your access patterns to maximize cache hits. Data accessed by nearby threads or same thread repeatedly should fit in cache.</p>
+                                        <ul class="list-disc list-inside space-y-2 mb-3">
+                                            <li><strong class="text-white">L2 Cache:</strong> Shared across all SMs (~40-80 MB on modern GPUs). Persist frequently-used data via L2 persistence APIs.</li>
+                                            <li><strong class="text-white">L1 / Shared Memory:</strong> Per-SM (~128-256 KB). Use for working sets that fit and are reused.</li>
+                                            <li><strong class="text-white">Texture Cache:</strong> Optimized for 2D spatial locality. Consider for image/volume data.</li>
+                                        </ul>
+                                        <p><strong class="text-white">Tip:</strong> Use <code class="code-inline">__ldg()</code> for read-only data to enable caching through texture cache path.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Compute Bound -->
+                <section id="compute-bound" class="scroll-mt-6">
+                    <div class="bottleneck-card compute-bound p-6">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="icon w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                                ⚡
+                            </div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold text-emerald-400 mb-2">Compute Bound</h2>
+                                <p class="text-slate-400">You've hidden memory latency and are no longer saturating memory bandwidth. Now the ALUs (CUDA cores and Tensor Cores) are the bottleneck.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Profiler Indicators -->
+                        <div class="mb-6">
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Profiler Indicators</h3>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Compute (FLOPS)</span>
+                                        <span class="text-emerald-400 font-bold">~70-95%</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-emerald-500" style="width: 85%"></div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">Approaching GPU peak FLOPS</p>
+                                </div>
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Memory Bandwidth</span>
+                                        <span class="text-slate-500 font-bold">~20-50%</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-slate-600" style="width: 35%"></div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">Memory not saturated</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Remedies -->
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detailed Remedies</h3>
+                            <div class="space-y-3">
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Exploit Instruction-Level Parallelism (ILP)</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Give the compiler more independent instructions to schedule. Modern GPUs can dual-issue certain instruction combinations.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Loop unrolling for ILP</p>
+                                            <code class="text-nv-green text-xs">
+// Before: Sequential dependency<br>
+for (int i = 0; i < N; i++)<br>
+&nbsp;&nbsp;sum += a[i] * b[i];<br><br>
+// After: Multiple accumulators<br>
+float sum0=0, sum1=0, sum2=0, sum3=0;<br>
+for (int i = 0; i < N; i += 4) {<br>
+&nbsp;&nbsp;sum0 += a[i] * b[i];<br>
+&nbsp;&nbsp;sum1 += a[i+1] * b[i+1];<br>
+&nbsp;&nbsp;sum2 += a[i+2] * b[i+2];<br>
+&nbsp;&nbsp;sum3 += a[i+3] * b[i+3];<br>
+}<br>
+float sum = sum0 + sum1 + sum2 + sum3;
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Why it works:</strong> Independent accumulators break dependency chains, allowing the compiler to overlap FMA latencies (~4 cycles).</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Use Tensor Cores (FP16/BF16/FP8/INT8)</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Tensor Cores provide 2-16x more FLOPS than CUDA cores for matrix operations. They require specific data types and sizes.</p>
+                                        <div class="grid md:grid-cols-2 gap-4 mb-3">
+                                            <div class="bg-slate-800/60 rounded-lg p-3">
+                                                <p class="text-xs text-slate-500 mb-2">Tensor Core FLOPS (H100)</p>
+                                                <ul class="text-xs space-y-1">
+                                                    <li>FP32 CUDA: <span class="text-slate-300">67 TFLOPS</span></li>
+                                                    <li>FP16 Tensor: <span class="text-emerald-400">1,979 TFLOPS</span></li>
+                                                    <li>FP8 Tensor: <span class="text-emerald-400">3,958 TFLOPS</span></li>
+                                                </ul>
+                                            </div>
+                                            <div class="bg-slate-800/60 rounded-lg p-3">
+                                                <p class="text-xs text-slate-500 mb-2">Requirements</p>
+                                                <ul class="text-xs space-y-1">
+                                                    <li>• Matrix dims divisible by 8/16</li>
+                                                    <li>• Use <code class="code-inline">wmma</code> or cuBLAS</li>
+                                                    <li>• Aligned memory</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <p><strong class="text-white">PyTorch:</strong> <code class="code-inline">with torch.autocast('cuda', dtype=torch.bfloat16)</code></p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Reduce Instruction Dependencies</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Restructure code to minimize read-after-write dependencies. Each FMA has ~4-cycle latency; chaining them serially limits throughput.</p>
+                                        <ul class="list-disc list-inside space-y-2 mb-3">
+                                            <li><strong class="text-white">Reorder operations:</strong> Interleave independent computations</li>
+                                            <li><strong class="text-white">Use local variables:</strong> Give compiler freedom to reorder</li>
+                                            <li><strong class="text-white">Check SASS:</strong> Look for stall cycles in assembly</li>
+                                        </ul>
+                                        <p><strong class="text-white">NCU metric:</strong> Check "Short Scoreboard" stalls—these indicate ALU dependency waits.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Leverage Sparsity (Structured 2:4)</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Ampere and later GPUs have hardware support for 2:4 structured sparsity, providing up to 2x speedup for sparse matrices.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">2:4 sparsity pattern</p>
+                                            <code class="text-nv-green text-xs">
+// 2:4 means 2 zeros in every 4 elements<br>
+[a, 0, b, 0] or [0, a, 0, b] or [a, b, 0, 0] etc.<br>
+// Hardware skips zero computations
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Use cases:</strong> Pruned neural networks, attention masks. Requires cuSPARSELt or specialized libraries.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Latency Bound -->
+                <section id="latency-bound" class="scroll-mt-6">
+                    <div class="bottleneck-card latency-bound p-6">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="icon w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                                ⏱️
+                            </div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold text-red-400 mb-2">Latency Bound</h2>
+                                <p class="text-slate-400">You're not sustaining enough concurrent work to hide individual load/store latencies, so warps stall waiting on data.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Profiler Indicators -->
+                        <div class="mb-6">
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Profiler Indicators</h3>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Achieved Bandwidth</span>
+                                        <span class="text-red-400 font-bold">~20-40%</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-red-500" style="width: 30%"></div>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-2">Well below peak (should be higher if truly memory-bound)</p>
+                                </div>
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Stall Reasons</span>
+                                        <span class="text-red-400 font-bold">High %</span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 mt-2">
+                                        <span class="indicator-badge pill-red text-xs">Long Scoreboard</span>
+                                        <span class="indicator-badge pill-red text-xs">Not Selected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Remedies -->
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detailed Remedies</h3>
+                            <div class="space-y-3">
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Increase Occupancy</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">More active warps per SM means more opportunities to hide latency. When one warp stalls, another can execute.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Occupancy limiters (check NCU)</p>
+                                            <ul class="text-xs space-y-1">
+                                                <li>• <strong class="text-white">Registers:</strong> Reduce via <code class="code-inline">__launch_bounds__</code> or <code class="code-inline">-maxrregcount</code></li>
+                                                <li>• <strong class="text-white">Shared memory:</strong> Reduce allocation or split across blocks</li>
+                                                <li>• <strong class="text-white">Block size:</strong> Ensure enough threads per block (multiples of 128-256)</li>
+                                            </ul>
+                                        </div>
+                                        <p><strong class="text-white">Trade-off:</strong> Lower registers may spill to local memory, hurting performance. Profile both configurations!</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Add ILP with Multiple Accumulators</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Even at low occupancy, ILP can help hide latency. Each thread issues multiple independent memory requests in flight.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Memory-level parallelism</p>
+                                            <code class="text-nv-green text-xs">
+// Issue multiple loads before using results<br>
+float a = data[i];<br>
+float b = data[i + stride];<br>
+float c = data[i + 2*stride];<br>
+float d = data[i + 3*stride];<br>
+// Now use a, b, c, d (all loads in flight)
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Key insight:</strong> Ampere+ can have ~12 outstanding loads per thread. Issuing just 1 load wastes this capability.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Intra-Kernel Pipelining</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Structure your kernel as a pipeline where loading, computing, and storing overlap. While processing tile N, prefetch tile N+1.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Double-buffering pattern</p>
+                                            <code class="text-nv-green text-xs">
+__shared__ float buf[2][TILE_SIZE];<br>
+// Load first tile<br>
+load_async(buf[0], global_ptr);<br>
+for (int t = 0; t < num_tiles; t++) {<br>
+&nbsp;&nbsp;// Start loading next tile<br>
+&nbsp;&nbsp;if (t+1 < num_tiles)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;load_async(buf[(t+1)%2], global_ptr + (t+1)*TILE_SIZE);<br>
+&nbsp;&nbsp;// Wait and process current tile<br>
+&nbsp;&nbsp;wait_async();<br>
+&nbsp;&nbsp;process(buf[t%2]);<br>
+}
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">CUDA 11+:</strong> Use <code class="code-inline">cuda::memcpy_async</code> for hardware-accelerated async copies.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Software Prefetching</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Issue loads for future iterations early, so data arrives by the time it's needed.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Prefetch pattern</p>
+                                            <code class="text-nv-green text-xs">
+// Manual prefetch (load into L2/L1)<br>
+asm volatile("prefetch.global.L2 [%0];" :: "l"(ptr + prefetch_distance));<br><br>
+// Or just issue the load early<br>
+float next_val = data[i + LOOKAHEAD];<br>
+// ... do other work ...<br>
+// By now next_val is likely ready
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">When to use:</strong> When access pattern is predictable and occupancy is limited. Adds register pressure.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Underutilized -->
+                <section id="underutilized" class="scroll-mt-6">
+                    <div class="bottleneck-card underutilized p-6">
+                        <div class="flex items-start gap-4 mb-6">
+                            <div class="icon w-14 h-14 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
+                                💤
+                            </div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold text-purple-400 mb-2">Underutilizing the GPU</h2>
+                                <p class="text-slate-400">You're not fully occupying SMs or launching enough work—both memory and compute resources remain idle.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Profiler Indicators -->
+                        <div class="mb-6">
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Profiler Indicators</h3>
+                            <div class="grid md:grid-cols-3 gap-4">
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Occupancy</span>
+                                        <span class="text-purple-400 font-bold">Low</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-purple-500" style="width: 15%"></div>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">Bandwidth</span>
+                                        <span class="text-slate-500 font-bold">Low</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-slate-600" style="width: 20%"></div>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-800/40 rounded-lg p-4">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <span class="text-slate-300 font-medium">FLOPS</span>
+                                        <span class="text-slate-500 font-bold">Low</span>
+                                    </div>
+                                    <div class="visual-meter">
+                                        <div class="visual-meter-fill bg-slate-600" style="width: 15%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-4 bg-slate-800/40 rounded-lg p-4">
+                                <p class="text-sm text-slate-400"><strong class="text-white">Nsys Timeline:</strong> Look for gaps between kernels, sparse kernel activity, or kernels not spanning all SMs.</p>
+                            </div>
+                        </div>
+
+                        <!-- Remedies -->
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detailed Remedies</h3>
+                            <div class="space-y-3">
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Increase Problem Size or Batch</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">The simplest fix: give the GPU more work. Modern GPUs have 80-144 SMs; each needs multiple blocks to stay busy.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Minimum blocks for full occupancy</p>
+                                            <code class="text-nv-green text-xs">
+// H100: 132 SMs × 16-32 blocks/SM = 2,000-4,000 blocks minimum<br>
+// If batch_size=32 and each item = 1 block:<br>
+//   Only 32 blocks → GPU is 99% idle!<br><br>
+// Solution: increase batch_size or tile smaller
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">ML training:</strong> Use gradient accumulation if memory-limited, or data parallelism across GPUs.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Launch More Threads/Blocks</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Adjust kernel launch configuration to expose more parallelism. Each thread can do less work if needed.</p>
+                                        <div class="grid md:grid-cols-2 gap-4 mb-3">
+                                            <div class="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-red-400 mb-2">❌ Coarse-grained</p>
+                                                <code class="text-xs text-slate-400">
+// 100 blocks, each does 1000 items<br>
+kernel<<<100, 256>>>();
+                                                </code>
+                                            </div>
+                                            <div class="bg-green-900/20 border border-green-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-green-400 mb-2">✓ Fine-grained</p>
+                                                <code class="text-xs text-slate-400">
+// 10,000 blocks, each does 10 items<br>
+kernel<<<10000, 256>>>();
+                                                </code>
+                                            </div>
+                                        </div>
+                                        <p><strong class="text-white">Balance:</strong> Too fine = launch overhead; too coarse = underutilization. Profile to find sweet spot.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Use CUDA Streams for Concurrency</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Run multiple independent kernels or overlap compute with memory transfers using streams.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Stream concurrency</p>
+                                            <code class="text-nv-green text-xs">
+cudaStream_t s1, s2, s3;<br>
+cudaStreamCreate(&s1); // ...<br><br>
+// These can execute concurrently if resources available<br>
+kernel_a<<<grid, block, 0, s1>>>();<br>
+kernel_b<<<grid, block, 0, s2>>>();<br>
+kernel_c<<<grid, block, 0, s3>>>();<br><br>
+// Overlap compute and transfer<br>
+cudaMemcpyAsync(d_out, h_out, size, cudaMemcpyDeviceToHost, s1);<br>
+kernel<<<grid, block, 0, s2>>>(d_in2, d_out2);
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">PyTorch:</strong> <code class="code-inline">torch.cuda.Stream()</code> with <code class="code-inline">with stream:</code> context.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Persistent Kernels</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">Instead of launching many small kernels, launch one kernel that persists and processes a work queue. Eliminates launch overhead.</p>
+                                        <div class="bg-slate-800/60 rounded-lg p-4 mb-3">
+                                            <p class="text-xs text-slate-500 mb-2">Persistent kernel pattern</p>
+                                            <code class="text-nv-green text-xs">
+__global__ void persistent_kernel(WorkQueue* queue) {<br>
+&nbsp;&nbsp;while (true) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;int task = atomicAdd(&queue->head, 1);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;if (task >= queue->total_tasks) break;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;process_task(queue->tasks[task]);<br>
+&nbsp;&nbsp;}<br>
+}<br>
+// Launch once with enough blocks to fill GPU<br>
+persistent_kernel<<<num_sms * blocks_per_sm, 256>>>(queue);
+                                            </code>
+                                        </div>
+                                        <p><strong class="text-white">Use cases:</strong> Graph neural networks, dynamic workloads, task queues. Requires careful synchronization.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="remedy-card p-4">
+                                    <button class="w-full flex items-center justify-between text-left" onclick="toggleExpand(this)">
+                                        <div class="flex items-center gap-3">
+                                            <span class="nv-green text-lg">▸</span>
+                                            <span class="font-semibold text-white">Fuse Small Kernels</span>
+                                        </div>
+                                        <span class="text-slate-500 text-sm">Click to expand</span>
+                                    </button>
+                                    <div class="expand-content mt-3 text-slate-400 text-sm">
+                                        <p class="mb-3">If you have many tiny kernels launching sequentially, fuse them into one larger kernel to reduce launch overhead and improve occupancy.</p>
+                                        <div class="grid md:grid-cols-2 gap-4 mb-3">
+                                            <div class="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-red-400 mb-2">❌ Many small kernels</p>
+                                                <code class="text-xs text-slate-400">
+add<<<1, 256>>>(a, b, c);<br>
+mul<<<1, 256>>>(c, d, e);<br>
+relu<<<1, 256>>>(e, f);<br>
+// 3 launches, gaps between
+                                                </code>
+                                            </div>
+                                            <div class="bg-green-900/20 border border-green-800/30 rounded-lg p-3">
+                                                <p class="text-xs text-green-400 mb-2">✓ One fused kernel</p>
+                                                <code class="text-xs text-slate-400">
+fused_add_mul_relu<<<N, 256>>>(<br>
+&nbsp;&nbsp;a, b, d, f);<br>
+// 1 launch, no gaps
+                                                </code>
+                                            </div>
+                                        </div>
+                                        <p><strong class="text-white">Automation:</strong> PyTorch <code class="code-inline">torch.compile</code>, TensorRT, Triton auto-fuse many operations.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Diagnosis Flow -->
+                <section id="diagnosis-flow" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Diagnosis Decision Flow
+                    </h2>
+                    
+                    <div class="bottleneck-card p-6">
+                        <div class="text-center mb-6">
+                            <p class="text-slate-400">Use this flowchart to identify your bottleneck type</p>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <!-- Step 1 -->
+                            <div class="flex items-start gap-4">
+                                <div class="w-8 h-8 rounded-full bg-nv-green flex items-center justify-center text-slate-900 font-bold flex-shrink-0">1</div>
+                                <div class="flex-1">
+                                    <p class="text-white font-semibold">Check Nsys timeline: Are there gaps between kernels?</p>
+                                    <div class="mt-2 flex gap-4 text-sm">
+                                        <span class="text-purple-400">→ Yes: <strong>Underutilized</strong> (launch overhead, small kernels)</span>
+                                        <span class="text-slate-500">→ No: Continue</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Step 2 -->
+                            <div class="flex items-start gap-4">
+                                <div class="w-8 h-8 rounded-full bg-nv-green flex items-center justify-center text-slate-900 font-bold flex-shrink-0">2</div>
+                                <div class="flex-1">
+                                    <p class="text-white font-semibold">Check NCU Speed of Light: Memory vs Compute %</p>
+                                    <div class="mt-2 space-y-1 text-sm">
+                                        <p class="text-amber-400">→ Memory ~80%+, Compute low: <strong>Memory Bound</strong></p>
+                                        <p class="text-emerald-400">→ Compute ~80%+, Memory low: <strong>Compute Bound</strong></p>
+                                        <p class="text-slate-500">→ Both low: Continue</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Step 3 -->
+                            <div class="flex items-start gap-4">
+                                <div class="w-8 h-8 rounded-full bg-nv-green flex items-center justify-center text-slate-900 font-bold flex-shrink-0">3</div>
+                                <div class="flex-1">
+                                    <p class="text-white font-semibold">Check stall reasons: Long Scoreboard, Not Selected high?</p>
+                                    <div class="mt-2 flex gap-4 text-sm">
+                                        <span class="text-red-400">→ Yes: <strong>Latency Bound</strong> (not enough work to hide latency)</span>
+                                        <span class="text-purple-400">→ No: <strong>Underutilized</strong> (check occupancy)</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-8 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                            <h4 class="font-semibold text-white mb-2">💡 Pro Tip</h4>
+                            <p class="text-slate-400 text-sm">
+                                Most real kernels are <strong>mixed</strong>—some phases memory-bound, others compute-bound. 
+                                Profile individual sections or use NCU Source Page to pinpoint bottlenecks at the instruction level.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-16 pt-8 border-t border-slate-800 text-sm text-slate-500">
+            <p>Part of the <a href="../index.html" class="nv-green hover:underline">AI Performance Design Guide</a></p>
+            <p class="mt-2">Based on Table 8-2: Memory bound vs latency bound vs compute bound vs underutilizing the GPU</p>
+        </footer>
+    </div>
+
+    <script>
+        // Smooth scroll for TOC links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Expand/collapse remedy sections
+        function toggleExpand(button) {
+            const content = button.nextElementSibling;
+            const arrow = button.querySelector('.nv-green');
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                arrow.textContent = '▸';
+                button.querySelector('.text-slate-500').textContent = 'Click to expand';
+            } else {
+                content.classList.add('expanded');
+                arrow.textContent = '▾';
+                button.querySelector('.text-slate-500').textContent = 'Click to collapse';
+            }
+        }
+
+        // Auto-expand first remedy in each section on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.bottleneck-card').forEach(card => {
+                const firstButton = card.querySelector('.remedy-card button');
+                if (firstButton) {
+                    // toggleExpand(firstButton);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

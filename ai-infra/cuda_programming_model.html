@@ -293,6 +293,76 @@
                         <p><strong class="font-semibold text-slate-900">SIMT (Single Instruction, Multiple Thread):</strong> All 32 threads in a warp execute the same instruction at the same time, but on different data. This is highly efficient if all threads follow the same execution path.</p>
                         <p><strong class="font-semibold text-slate-900">Warp Divergence:</strong> If threads within a warp encounter a conditional statement (e.g., `if-else`) and take different paths, the paths are executed serially for that warp. Some threads will be temporarily idle while others execute their path. This can significantly impact performance. Minimizing divergence is a key optimization.</p>
                         <p>Choosing a block size that is a multiple of 32 (the warp size) is crucial. If not, the last warp will have inactive threads, but the hardware still allocates resources for a full warp, leading to inefficiency.</p>
+                        
+                        <h4 class="font-semibold text-slate-800 text-md mt-6 mb-3">SM Hardware Constraints:</h4>
+                        <p>Each Streaming Multiprocessor (SM) has fixed limits that determine occupancy:</p>
+                        <ul class="list-disc list-inside ml-4 text-sm my-3">
+                            <li><strong>64 warps maximum</strong> (2048 threads) per SM on datacenter GPUs (A100/H100/B100)</li>
+                            <li><strong>32 thread blocks maximum</strong> per SM</li>
+                            <li><strong>4 warp schedulers</strong> per SM, each capable of issuing instructions independently</li>
+                        </ul>
+                        <p>The actual occupancy depends on which limit (warps, blocks, registers, or shared memory) is hit first.</p>
+
+                        <h4 class="font-semibold text-slate-800 text-md mt-6 mb-3">Block Size vs. SM Limits Examples:</h4>
+                        <p class="text-sm text-slate-600 mb-3">The table below shows how block size affects the maximum number of concurrent blocks per SM, constrained by both the warp limit (64) and the block limit (32).</p>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm border border-slate-300 rounded-lg overflow-hidden">
+                                <thead class="bg-slate-200">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Block Size</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Warps/Block</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Max Blocks (warp limit)</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Max Blocks (block limit)</th>
+                                        <th class="px-3 py-2 text-left font-semibold text-slate-700 border-b border-slate-300">Actual Max Blocks</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white">
+                                    <tr class="border-b border-slate-200">
+                                        <td class="px-3 py-2">32 threads</td>
+                                        <td class="px-3 py-2">1</td>
+                                        <td class="px-3 py-2">64</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-amber-700">32 (block-limited)</td>
+                                    </tr>
+                                    <tr class="border-b border-slate-200 bg-green-50">
+                                        <td class="px-3 py-2">64 threads</td>
+                                        <td class="px-3 py-2">2</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-green-700">32 (both limits)</td>
+                                    </tr>
+                                    <tr class="border-b border-slate-200">
+                                        <td class="px-3 py-2">128 threads</td>
+                                        <td class="px-3 py-2">4</td>
+                                        <td class="px-3 py-2">16</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-indigo-700">16 (warp-limited)</td>
+                                    </tr>
+                                    <tr class="border-b border-slate-200">
+                                        <td class="px-3 py-2">256 threads</td>
+                                        <td class="px-3 py-2">8</td>
+                                        <td class="px-3 py-2">8</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-indigo-700">8 (warp-limited)</td>
+                                    </tr>
+                                    <tr class="border-b border-slate-200">
+                                        <td class="px-3 py-2">512 threads</td>
+                                        <td class="px-3 py-2">16</td>
+                                        <td class="px-3 py-2">4</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-indigo-700">4 (warp-limited)</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="px-3 py-2">1024 threads</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2">2</td>
+                                        <td class="px-3 py-2">32</td>
+                                        <td class="px-3 py-2 font-medium text-indigo-700">2 (warp-limited)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="text-sm text-slate-600 mt-3">Note: 64 threads per block is the sweet spot where both limits are reached simultaneously, maximizing occupancy potential.</p>
                     </div>
                     <div id="tab-content-memory" class="tab-content hidden space-y-4 text-slate-700 leading-relaxed">
                         <p>CUDA programming involves managing memory on both the CPU (host) and the GPU (device). Data must be transferred to the GPU for processing and results transferred back.</p>

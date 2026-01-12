@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nsight Compute Metrics Reference Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        .border-nv-green { border-color: #76B900; }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        .metric-card:hover {
+            border-color: #76B900;
+            box-shadow: 0 0 20px rgba(118, 185, 0, 0.1);
+        }
+        
+        .category-header {
+            background: linear-gradient(135deg, #1e3a2f 0%, #1e293b 100%);
+            border-left: 4px solid #76B900;
+        }
+        
+        .info-card {
+            background: linear-gradient(135deg, #1e3a2f 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #76B900;
+        }
+        .warning-card {
+            background: linear-gradient(135deg, #451a03 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #f59e0b;
+        }
+        .insight-card {
+            background: linear-gradient(135deg, #1e1e3a 0%, #1e293b 100%);
+            border-radius: 0.75rem;
+            border-left: 4px solid #818cf8;
+        }
+        
+        .code-inline {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+        
+        .stall-reason {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: rgba(118, 185, 0, 0.1);
+            border: 1px solid rgba(118, 185, 0, 0.3);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .toc-link {
+            border-left: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .toc-link:hover {
+            border-left-color: #76B900;
+            background: rgba(118, 185, 0, 0.1);
+        }
+        
+        .diagram-container {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+        }
+        
+        .sampling-animation {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        .metric-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-sampling { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); }
+        .badge-counter { background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); }
+        .badge-memory { background: rgba(129, 140, 248, 0.2); color: #818cf8; border: 1px solid rgba(129, 140, 248, 0.3); }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-6xl">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <div class="inline-flex items-center gap-3 mb-4">
+                <svg class="w-10 h-10 nv-green" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h.71C7.37 7.69 9.48 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3s-1.34 3-3 3z"/>
+                </svg>
+                <h1 class="text-3xl sm:text-4xl font-bold text-white">Nsight Compute Metrics</h1>
+            </div>
+            <p class="text-xl text-slate-400">Complete Reference Guide for CUDA Kernel Profiling</p>
+            <p class="mt-2 text-sm text-slate-500">Source-level metrics, warp stall analysis, and memory profiling</p>
+        </header>
+
+        <div class="grid lg:grid-cols-4 gap-8">
+            <!-- Table of Contents Sidebar -->
+            <aside class="lg:col-span-1">
+                <nav class="sticky top-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Contents</h2>
+                    <ul class="space-y-1 text-sm">
+                        <li><a href="#overview" class="toc-link block py-1.5 px-3 rounded text-slate-300">Overview</a></li>
+                        <li><a href="#source-page" class="toc-link block py-1.5 px-3 rounded text-slate-300">Source Page Features</a></li>
+                        <li><a href="#instruction-metrics" class="toc-link block py-1.5 px-3 rounded text-slate-300">Instruction Metrics</a></li>
+                        <li><a href="#warp-stalls" class="toc-link block py-1.5 px-3 rounded text-slate-300">Warp Stall Statistics</a></li>
+                        <li><a href="#sampling" class="toc-link block py-1.5 px-3 rounded text-slate-300">PC Sampling Explained</a></li>
+                        <li><a href="#memory-metrics" class="toc-link block py-1.5 px-3 rounded text-slate-300">Memory Metrics</a></li>
+                        <li><a href="#register-metrics" class="toc-link block py-1.5 px-3 rounded text-slate-300">Register & Dependencies</a></li>
+                        <li><a href="#details-page" class="toc-link block py-1.5 px-3 rounded text-slate-300">Details Page Metrics</a></li>
+                        <li><a href="#key-insights" class="toc-link block py-1.5 px-3 rounded text-slate-300">Key Insights</a></li>
+                        <li><a href="#line-table" class="toc-link block py-1.5 px-3 rounded text-slate-300">Line Table Setup</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="lg:col-span-3 space-y-12">
+
+                <!-- Overview -->
+                <section id="overview" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Nsight Compute Overview
+                    </h2>
+                    
+                    <div class="info-card p-6 mb-6">
+                        <p class="text-slate-300">
+                            <strong class="nv-green">Nsight Compute (NCU)</strong> is NVIDIA's GPU kernel profiler that provides detailed performance reports 
+                            showing how kernels utilize GPU resources. This guide covers the metrics available on the <strong>Source Page</strong> and 
+                            <strong>Details Page</strong>, with focus on understanding what each metric means and how to use them.
+                        </p>
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="metric-card p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="text-2xl">📊</span>
+                                <h4 class="font-semibold text-white">Details Page</h4>
+                            </div>
+                            <p class="text-slate-400 text-sm">High-level kernel metrics, speed-of-light analysis, and guided recommendations</p>
+                        </div>
+                        <div class="metric-card p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="text-2xl">📝</span>
+                                <h4 class="font-semibold text-white">Source Page</h4>
+                            </div>
+                            <p class="text-slate-400 text-sm">Per-line metrics correlated between high-level code and SASS assembly</p>
+                        </div>
+                        <div class="metric-card p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="text-2xl">🔍</span>
+                                <h4 class="font-semibold text-white">Guided Analysis</h4>
+                            </div>
+                            <p class="text-slate-400 text-sm">Automatic detection of performance issues with speedup estimates</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Source Page Features -->
+                <section id="source-page" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Source Page Features
+                    </h2>
+
+                    <div class="space-y-4">
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Supported Languages</h4>
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <h5 class="text-sm font-medium text-slate-300 mb-2">High-Level Languages</h5>
+                                    <ul class="text-slate-400 text-sm space-y-1">
+                                        <li>• CUDA-C/C++</li>
+                                        <li>• Fortran</li>
+                                        <li>• Python (with CUDA)</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h5 class="text-sm font-medium text-slate-300 mb-2">Low-Level Assembly</h5>
+                                    <ul class="text-slate-400 text-sm space-y-1">
+                                        <li>• <strong class="nv-green">PTX</strong> - Intermediate representation</li>
+                                        <li>• <strong class="nv-green">SASS</strong> - GPU assembly (always available, where metrics are collected)</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Source Correlation</h4>
+                            <p class="text-slate-400 text-sm mb-3">Click any line in CUDA-C to see corresponding SASS instructions (and vice versa). Uses Line Table Information to correlate languages.</p>
+                            <div class="grid md:grid-cols-2 gap-4 text-sm">
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-slate-300 mb-1">High-Level → Low-Level</div>
+                                    <div class="text-slate-500">Click CUDA-C line to see all generated SASS instructions</div>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <div class="text-slate-300 mb-1">Low-Level → High-Level</div>
+                                    <div class="text-slate-500">Click SASS instruction to see originating source line</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Visual Features</h4>
+                            <ul class="text-slate-400 text-sm space-y-2">
+                                <li>• <strong class="text-white">Heatmap/Minimap</strong> - Color gradient showing metric intensity across code</li>
+                                <li>• <strong class="text-white">Navigation buttons</strong> - Jump to highest/next value quickly</li>
+                                <li>• <strong class="text-white">Per-file statistics</strong> - Collapse view to see aggregated metrics per source file</li>
+                                <li>• <strong class="text-white">Inline function breakdown</strong> - Split metrics by call site for inlined functions</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Instruction Executed Metrics -->
+                <section id="instruction-metrics" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Instruction Executed Metrics
+                        <span class="badge-counter ml-2">Counter-Based</span>
+                    </h2>
+
+                    <p class="text-slate-400 mb-6">These metrics tell you what code is executed and how efficiently (in terms of active threads).</p>
+
+                    <div class="space-y-4">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Instructions Executed (Warps)</h4>
+                                <code class="code-inline nv-green">inst_executed</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">How many warps executed this instruction. For a kernel with 101 blocks of 32 threads (1 warp each), expect 101 warps per instruction (if no branching).</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Instructions Executed (Threads)</h4>
+                                <code class="code-inline nv-green">inst_executed_threads</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Total thread count executing this instruction. With 101 warps of 32 threads: 101 × 32 = 3,232 threads expected.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Predicated On Executed</h4>
+                                <code class="code-inline nv-green">inst_executed_pred_on</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Thread count with predication mask <strong>enabled</strong>. Used for conditional execution (if statements).</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Average Threads Executed per Warp</h4>
+                                <code class="code-inline nv-green">avg_threads_executed</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Average active threads when executing. <strong>32 = full warp</strong>, lower = divergence/predication. Key efficiency indicator!</p>
+                            <div class="mt-3 p-3 bg-slate-800/50 rounded-lg">
+                                <div class="text-xs text-slate-500 mb-1">Example:</div>
+                                <div class="text-sm text-slate-300">If condition <code class="code-inline">if (threadIdx.x < 24)</code> → average = 24 for instructions inside the if-block</div>
+                            </div>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Average Predicated Threads per Warp</h4>
+                                <code class="code-inline nv-green">avg_pred_threads_executed</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Same as above but accounting for predication masks. Shows true active participation.</p>
+                        </div>
+                    </div>
+
+                    <div class="warning-card p-5 mt-6">
+                        <h4 class="font-semibold text-amber-400 mb-2">⚠️ Compiler Optimizations Can Surprise You</h4>
+                        <p class="text-slate-300 text-sm">
+                            Some conditions may not show reduced thread counts because the compiler used <code class="code-inline">FSEL</code> (floating-point select) 
+                            instead of predicated instructions. All 32 threads execute FSEL, just with different operands selected. 
+                            <strong>Always check generated SASS to understand the metrics.</strong>
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Warp Stall Statistics -->
+                <section id="warp-stalls" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-amber-500 rounded-full"></span>
+                        Warp Stall Statistics
+                        <span class="badge-sampling ml-2">PC Sampling</span>
+                    </h2>
+
+                    <p class="text-slate-400 mb-6">Collected via statistical sampling (not exact counts). Shows why warps couldn't make forward progress.</p>
+
+                    <div class="category-header p-4 rounded-lg mb-4">
+                        <h3 class="font-semibold text-white">Memory-Related Stalls</h3>
+                    </div>
+
+                    <div class="space-y-4 mb-8">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🔴 MIO Throttle</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Memory Input/Output pipeline is overfilled. Too many memory instructions issued, pipeline can't accept more. Common when kernel is heavily memory-bound.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🔴 Long Scoreboard</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Waiting for memory dependency to resolve. The instruction needs data from a previous load that hasn't completed yet. Most common memory stall.</p>
+                            <div class="mt-3 p-3 bg-slate-800/50 rounded-lg text-sm">
+                                <span class="text-slate-500">Example:</span>
+                                <span class="text-slate-300"> <code class="code-inline">float x = data[i];</code> followed by <code class="code-inline">float y = x * 2;</code> — the multiply waits for load</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🔴 LG Throttle</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Local/Global memory throttle. Similar to MIO throttle but specifically for L2/global memory operations.</p>
+                        </div>
+                    </div>
+
+                    <div class="category-header p-4 rounded-lg mb-4">
+                        <h3 class="font-semibold text-white">Synchronization Stalls</h3>
+                    </div>
+
+                    <div class="space-y-4 mb-8">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🟡 Barrier</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Waiting at <code class="code-inline">__syncthreads()</code> for other threads in the block to arrive.</p>
+                            <div class="mt-3 p-3 bg-slate-800/50 rounded-lg text-sm text-slate-300">
+                                <strong>Important:</strong> Stall appears on the instruction <strong>after</strong> the barrier, not on the barrier itself!
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="category-header p-4 rounded-lg mb-4">
+                        <h3 class="font-semibold text-white">Scheduling States</h3>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🟢 Not Selected</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Warp was <strong>ready</strong> to execute but wasn't chosen by the scheduler this cycle. Normal behavior—doesn't indicate a problem.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="stall-reason">🟢 Selected</span>
+                                </div>
+                            </div>
+                            <p class="text-slate-400 text-sm">Warp that actually issued an instruction this cycle. This is the "good" state—warp made forward progress.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- PC Sampling Explained -->
+                <section id="sampling" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-amber-500 rounded-full"></span>
+                        PC Sampling: How It Works
+                    </h2>
+
+                    <div class="diagram-container p-6 mb-6">
+                        <h4 class="text-center font-semibold text-white mb-6">SM Sampling Algorithm</h4>
+                        
+                        <div class="grid md:grid-cols-4 gap-4 mb-6">
+                            <!-- SMSP boxes -->
+                            <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                                <div class="text-xs text-slate-400 mb-2">Warp Scheduler 0</div>
+                                <div class="grid grid-cols-4 gap-1">
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-700/50 rounded-lg p-4 text-center border-2 border-nv-green">
+                                <div class="text-xs text-slate-400 mb-2">Warp Scheduler 1 <span class="nv-green">← Selected</span></div>
+                                <div class="grid grid-cols-4 gap-1">
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded sampling-animation border-2 border-nv-green"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                                <div class="text-xs text-slate-400 mb-2">Warp Scheduler 2</div>
+                                <div class="grid grid-cols-4 gap-1">
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                </div>
+                            </div>
+                            <div class="bg-slate-700/50 rounded-lg p-4 text-center">
+                                <div class="text-xs text-slate-400 mb-2">Warp Scheduler 3</div>
+                                <div class="grid grid-cols-4 gap-1">
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                    <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-center gap-6 text-sm">
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-purple-500 rounded"></div>
+                                <span class="text-slate-400">Active Warp</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-slate-600 rounded"></div>
+                                <span class="text-slate-400">Unused Slot</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-purple-500 rounded border-2 border-nv-green"></div>
+                                <span class="text-slate-400">Sampled Warp</span>
+                            </div>
+                        </div>
+                        
+                        <p class="text-center text-xs text-slate-500 mt-6">
+                            Every N cycles: randomly pick 1 warp scheduler per SM, then randomly pick 1 active warp → record PC + stall reason
+                        </p>
+                    </div>
+
+                    <div class="metric-card p-5 mb-4">
+                        <h4 class="font-semibold text-white mb-3">Sampling Metrics</h4>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Kernel Duration</span>
+                                <code class="code-inline">gpu__time_duration</code>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Number of SMs</span>
+                                <code class="code-inline">device__attribute_num_sm</code>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Sample Interval (cycles)</span>
+                                <code class="code-inline">smsp__pcsamp_interval</code>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Total Samples Collected</span>
+                                <code class="code-inline">smsp__pcsamp_sample_count</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-card p-5">
+                        <h4 class="font-semibold text-white mb-2">Estimating Sample Count</h4>
+                        <div class="bg-slate-800/50 rounded-lg p-4 font-mono text-sm text-slate-300">
+                            sample_count ≈ (kernel_duration / sample_interval) × num_SMs
+                        </div>
+                        <p class="text-slate-400 text-sm mt-3">Useful for configuring sample interval when you want a specific sample density.</p>
+                    </div>
+                </section>
+
+                <!-- Memory Metrics -->
+                <section id="memory-metrics" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-indigo-500 rounded-full"></span>
+                        Memory Metrics
+                        <span class="badge-memory ml-2">Memory</span>
+                    </h2>
+
+                    <div class="space-y-4">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Excessive Sectors in L2</h4>
+                                <code class="code-inline text-indigo-400">l2_excessive_sectors</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Memory accesses that fetched more L2 cache sectors than needed. Indicates non-coalesced access patterns.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Excessive Sectors in L1</h4>
+                                <code class="code-inline text-indigo-400">l1_excessive_sectors</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Same as above but for L1 cache. High values indicate inefficient memory access patterns.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Excessive Memory Transactions</h4>
+                                <code class="code-inline text-indigo-400">memory_excessive_transactions</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Total count of "wasted" memory transactions. Quick way to find inefficient load/store instructions.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Shared Memory Bank Conflicts</h4>
+                                <code class="code-inline text-indigo-400">shared_bank_conflicts</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Access pattern causes multiple threads to hit same memory bank. Serializes memory accesses.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Memory Instruction Types</h4>
+                            <p class="text-slate-400 text-sm mb-3">The Source Page shows instruction types in the SASS column:</p>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <code class="code-inline">LDG</code> <span class="text-slate-400">- Global Load</span>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <code class="code-inline">STG</code> <span class="text-slate-400">- Global Store</span>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <code class="code-inline">LDS</code> <span class="text-slate-400">- Shared Load</span>
+                                </div>
+                                <div class="bg-slate-800/50 rounded-lg p-3">
+                                    <code class="code-inline">STS</code> <span class="text-slate-400">- Shared Store</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="warning-card p-5 mt-6">
+                        <h4 class="font-semibold text-amber-400 mb-2">💡 Normalize by Execution Count</h4>
+                        <p class="text-slate-300 text-sm">
+                            An instruction executed 1000× will have more excessive memory transactions than one executed 10×. 
+                            Divide excessive transactions by execution count to find the <strong>worst access patterns</strong>.
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Register & Dependencies -->
+                <section id="register-metrics" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-pink-500 rounded-full"></span>
+                        Register & Dependency Tracking
+                    </h2>
+
+                    <div class="space-y-4">
+                        <div class="metric-card p-5">
+                            <div class="flex justify-between items-start mb-3">
+                                <h4 class="font-semibold text-white">Live Registers</h4>
+                                <code class="code-inline text-pink-400">registers_live</code>
+                            </div>
+                            <p class="text-slate-400 text-sm">Number of registers in use at each instruction. Uses <strong>max</strong> aggregation. High register pressure can limit occupancy.</p>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Register Dependencies</h4>
+                            <p class="text-slate-400 text-sm mb-3">The Source Page shows register read/write dependencies:</p>
+                            <ul class="text-slate-400 text-sm space-y-2">
+                                <li>• <strong class="text-white">Output registers</strong> - Which registers this instruction writes to</li>
+                                <li>• <strong class="text-white">Input registers</strong> - Which registers this instruction reads from</li>
+                                <li>• Click to <strong>follow the dependency chain</strong> and find stall sources</li>
+                            </ul>
+                        </div>
+
+                        <div class="metric-card p-5">
+                            <h4 class="font-semibold text-white mb-3">Predicate Dependencies</h4>
+                            <p class="text-slate-400 text-sm">Track predicate registers (P0, P1, etc.) used for conditional execution. Click to see where predicates are set and consumed.</p>
+                        </div>
+                    </div>
+
+                    <div class="insight-card p-5 mt-6">
+                        <h4 class="font-semibold text-indigo-300 mb-2">🔗 Finding Dependency Chains</h4>
+                        <p class="text-slate-300 text-sm">
+                            When you see <strong>Long Scoreboard</strong> stalls, use register dependencies to trace back:
+                            <br><br>
+                            1. Find instruction with high stall count<br>
+                            2. Check its input registers<br>
+                            3. Find instruction that <strong>writes</strong> to that register<br>
+                            4. That's likely your slow instruction (memory load, etc.)
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Details Page Metrics -->
+                <section id="details-page" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-cyan-500 rounded-full"></span>
+                        Details Page: Aggregate Metrics
+                        <span class="badge-counter ml-2">Hardware Counters</span>
+                    </h2>
+
+                    <p class="text-slate-400 mb-6">These are kernel-wide aggregates from hardware counters (not sampling).</p>
+
+                    <div class="metric-card p-5 mb-4">
+                        <h4 class="font-semibold text-white mb-3">Speed of Light Throughput</h4>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="bg-slate-800/50 rounded-lg p-4">
+                                <div class="text-lg font-bold nv-green mb-1">Compute (%)</div>
+                                <p class="text-slate-400 text-sm">Percentage of peak compute throughput achieved</p>
+                            </div>
+                            <div class="bg-slate-800/50 rounded-lg p-4">
+                                <div class="text-lg font-bold text-cyan-400 mb-1">Memory (%)</div>
+                                <p class="text-slate-400 text-sm">Percentage of peak memory bandwidth achieved</p>
+                            </div>
+                        </div>
+                        <p class="text-slate-500 text-sm mt-3">Higher value indicates which resource is the bottleneck.</p>
+                    </div>
+
+                    <div class="metric-card p-5 mb-4">
+                        <h4 class="font-semibold text-white mb-3">Pipeline Utilization</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">LSU (Load/Store Unit)</span>
+                                <span class="text-slate-300">Memory operation pipeline</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">FMA (Fused Multiply-Add)</span>
+                                <span class="text-slate-300">Math pipeline</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Tensor Core</span>
+                                <span class="text-slate-300">Matrix operation pipeline</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card p-5 mb-4">
+                        <h4 class="font-semibold text-white mb-3">Issue Slot Utilization</h4>
+                        <p class="text-slate-400 text-sm mb-3">Percentage of cycles where warp schedulers issued instructions. <strong>Target: close to 100%</strong></p>
+                        <div class="bg-slate-800/50 rounded-lg p-3 text-sm">
+                            <span class="text-slate-500">Example:</span>
+                            <span class="text-slate-300"> "Issue every 5 cycles" = ~20% utilization = room for optimization</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card p-5">
+                        <h4 class="font-semibold text-white mb-3">Warp Stall Reasons (Aggregated)</h4>
+                        <p class="text-slate-400 text-sm mb-3">Same stall reasons as Source Page, but aggregated over entire kernel. Collected via hardware counters (not sampling).</p>
+                        <div class="info-card p-4">
+                            <p class="text-slate-300 text-sm">
+                                <strong>Key difference:</strong> Hardware counters count <strong>every</strong> stall for <strong>every</strong> active warp, every cycle. 
+                                Sum of all stall reasons = total active warp-cycles. Ratios between reasons match the sampled data.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Key Insights -->
+                <section id="key-insights" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Key Insights for Using NCU Metrics
+                    </h2>
+
+                    <div class="space-y-4">
+                        <div class="insight-card p-5">
+                            <h4 class="font-semibold text-indigo-300 mb-2">1. Stalls Appear on Dependent Instructions</h4>
+                            <p class="text-slate-300 text-sm">
+                                A slow <strong>load</strong> doesn't show stalls on itself—stalls appear on the instruction that <strong>uses</strong> the loaded value.
+                                A <strong>barrier</strong> shows stalls on the instruction <strong>after</strong> the barrier, not on the barrier itself.
+                            </p>
+                        </div>
+
+                        <div class="insight-card p-5">
+                            <h4 class="font-semibold text-indigo-300 mb-2">2. Zero Stalls ≠ Perfect Kernel</h4>
+                            <p class="text-slate-300 text-sm">
+                                The goal isn't zero stalls—it's <strong>high issue slot utilization</strong>. Some stalls are hidden by having enough warps. 
+                                Only focus on stalls if your kernel is <strong>latency-limited</strong> (check Details Page first).
+                            </p>
+                        </div>
+
+                        <div class="insight-card p-5">
+                            <h4 class="font-semibold text-indigo-300 mb-2">3. Check Generated Assembly</h4>
+                            <p class="text-slate-300 text-sm">
+                                Click on source lines to see what assembly was actually generated. Loop unrolling, predication, and compiler optimizations 
+                                can produce very different code than you expect. Metrics only make sense when you understand the generated code.
+                            </p>
+                        </div>
+
+                        <div class="insight-card p-5">
+                            <h4 class="font-semibold text-indigo-300 mb-2">4. Use Per-File Statistics for Large Codebases</h4>
+                            <p class="text-slate-300 text-sm">
+                                Collapse the Source Page to get per-file aggregates. Quickly identify which source files consume the most cycles or have 
+                                the worst memory access patterns before diving into individual lines.
+                            </p>
+                        </div>
+
+                        <div class="insight-card p-5">
+                            <h4 class="font-semibold text-indigo-300 mb-2">5. Inline Function Breakdown</h4>
+                            <p class="text-slate-300 text-sm">
+                                When helper functions are inlined, all metrics aggregate to a single line. Use the <strong>inline function breakdown table</strong> 
+                                to split metrics by call site and find which call is actually expensive.
+                            </p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Line Table Setup -->
+                <section id="line-table" class="scroll-mt-6">
+                    <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                        <span class="w-1.5 h-8 bg-nv-green rounded-full"></span>
+                        Enabling Line Table Information
+                    </h2>
+
+                    <p class="text-slate-400 mb-6">Required to correlate CUDA-C source with SASS assembly. Does NOT affect code optimization.</p>
+
+                    <div class="metric-card p-5 mb-4">
+                        <h4 class="font-semibold text-white mb-3">Compiler Flags</h4>
+                        <div class="space-y-3">
+                            <div class="bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-sm text-slate-400 mb-1">NVCC</div>
+                                <code class="text-nv-green">nvcc --generate-line-info ...</code>
+                            </div>
+                            <div class="bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-sm text-slate-400 mb-1">HPC SDK</div>
+                                <code class="text-nv-green">Enabled by default</code>
+                            </div>
+                            <div class="bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-sm text-slate-400 mb-1">Python/Numba/Triton</div>
+                                <code class="text-nv-green">Pass via jit options</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card p-5">
+                        <h4 class="font-semibold text-white mb-3">NCU Collection</h4>
+                        <p class="text-slate-400 text-sm mb-3">Enable Source Counter section (part of "full" metric set):</p>
+                        <div class="bg-slate-800/50 rounded-lg p-3">
+                            <code class="text-nv-green">ncu --set full -o report ./my_app</code>
+                        </div>
+                    </div>
+
+                    <div class="info-card p-5 mt-6">
+                        <h4 class="font-semibold text-white mb-2">Inline Function Support</h4>
+                        <p class="text-slate-300 text-sm">
+                            For inline function breakdown to work, compile with <strong>CUDA 11.8+</strong> toolkit (when using NVCC).
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Quick Reference Table -->
+                <section class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+                    <h3 class="text-xl font-bold text-white mb-4">Quick Reference: Metric Categories</h3>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-slate-400 border-b border-slate-700">
+                                    <th class="pb-3 pr-4">Category</th>
+                                    <th class="pb-3 pr-4">Source</th>
+                                    <th class="pb-3 pr-4">Use For</th>
+                                    <th class="pb-3">Key Metrics</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr class="border-b border-slate-700/50">
+                                    <td class="py-3 pr-4 font-medium">Instruction</td>
+                                    <td class="py-3 pr-4"><span class="badge-counter">Counter</span></td>
+                                    <td class="py-3 pr-4">Execution count, thread efficiency</td>
+                                    <td class="py-3"><code class="code-inline text-xs">inst_executed</code>, <code class="code-inline text-xs">avg_threads</code></td>
+                                </tr>
+                                <tr class="border-b border-slate-700/50">
+                                    <td class="py-3 pr-4 font-medium">Warp Stalls</td>
+                                    <td class="py-3 pr-4"><span class="badge-sampling">Sampling</span></td>
+                                    <td class="py-3 pr-4">Find latency bottlenecks</td>
+                                    <td class="py-3">Long Scoreboard, MIO Throttle, Barrier</td>
+                                </tr>
+                                <tr class="border-b border-slate-700/50">
+                                    <td class="py-3 pr-4 font-medium">Memory</td>
+                                    <td class="py-3 pr-4"><span class="badge-memory">Memory</span></td>
+                                    <td class="py-3 pr-4">Find inefficient access patterns</td>
+                                    <td class="py-3"><code class="code-inline text-xs">excessive_sectors</code>, <code class="code-inline text-xs">bank_conflicts</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="py-3 pr-4 font-medium">Registers</td>
+                                    <td class="py-3 pr-4"><span class="badge-counter">Counter</span></td>
+                                    <td class="py-3 pr-4">Dependency chains, pressure</td>
+                                    <td class="py-3"><code class="code-inline text-xs">registers_live</code>, dependencies</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-16 pt-8 border-t border-slate-800 text-sm text-slate-500">
+            <p>Part of the <a href="../index.html" class="nv-green hover:underline">AI Performance Design Guide</a></p>
+            <p class="mt-2">© 2025. Based on NVIDIA GTC presentation: "Become Faster in Writing Performant CUDA Kernels using the Source Page in Nsight Compute"</p>
+        </footer>
+    </div>
+
+    <script>
+        // Smooth scroll for TOC links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

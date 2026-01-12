@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUDA Performance Optimization Samples Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        .border-nv-green { border-color: #76B900; }
+        .tab {
+            transition: all 0.2s ease-in-out;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+        }
+        .tab:hover {
+            color: #76B900;
+        }
+        .tab.active {
+            border-bottom-color: #76B900;
+            color: #76B900;
+            font-weight: 600;
+        }
+        .fade-in {
+            animation: fadeIn 0.4s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .code-block {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            white-space: pre-wrap;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+        .code-block .comment { color: #6b7280; }
+        .code-block .keyword { color: #f472b6; }
+        .code-block .type { color: #60a5fa; }
+        .code-block .function { color: #34d399; }
+        .code-block .number { color: #fbbf24; }
+        .code-block .preprocessor { color: #c084fc; }
+        .code-block .string { color: #fcd34d; }
+        
+        .diagram-box {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+            border: 2px solid #86efac;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        .memory-cell {
+            transition: all 0.3s ease;
+        }
+        .memory-cell:hover {
+            transform: scale(1.05);
+        }
+        .perf-bar {
+            transition: width 0.5s ease-out;
+        }
+        .info-card {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-left: 4px solid #76B900;
+        }
+        .warning-card {
+            background: #fef3c7;
+            border-radius: 0.5rem;
+            border-left: 4px solid #f59e0b;
+        }
+        .comparison-table th {
+            background-color: #f0fdf4;
+        }
+        .comparison-table tr:hover {
+            background-color: #f8fafc;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">CUDA Performance Optimization Samples</h1>
+            <p class="mt-2 text-lg text-gray-600">Deep dive into NVIDIA's performance optimization examples</p>
+            <p class="mt-1 text-sm text-gray-500">
+                Based on <a href="https://github.com/NVIDIA/cuda-samples/tree/master/Samples/6_Performance" target="_blank" class="nv-green hover:underline">NVIDIA cuda-samples/6_Performance</a>
+            </p>
+        </header>
+
+        <main class="bg-white rounded-xl shadow-xl p-6 md:p-8">
+            <!-- Tab Navigation -->
+            <section id="tab-navigation" class="mb-8">
+                <div class="border-b border-gray-200">
+                    <nav class="flex -mb-px flex-wrap gap-2 sm:gap-6 justify-center" aria-label="Tabs">
+                        <button class="tab active px-3 py-2 text-sm sm:text-base" data-tab="alignedTypes">
+                            <span class="hidden sm:inline">1. </span>alignedTypes
+                        </button>
+                        <button class="tab px-3 py-2 text-sm sm:text-base" data-tab="transpose">
+                            <span class="hidden sm:inline">2. </span>transpose
+                        </button>
+                        <button class="tab px-3 py-2 text-sm sm:text-base" data-tab="unifiedMemory">
+                            <span class="hidden sm:inline">3. </span>UnifiedMemoryPerf
+                        </button>
+                        <button class="tab px-3 py-2 text-sm sm:text-base" data-tab="cudaGraphs">
+                            <span class="hidden sm:inline">4. </span>cudaGraphsPerfScaling
+                        </button>
+                    </nav>
+                </div>
+            </section>
+
+            <!-- Tab Content: alignedTypes -->
+            <section id="tab-content-alignedTypes" class="tab-content fade-in">
+                <div class="space-y-8">
+                    <!-- Header -->
+                    <div class="text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Memory Alignment & Structure Padding</h2>
+                        <p class="text-gray-600">Understanding the huge access speed gap between aligned and misaligned data structures</p>
+                    </div>
+
+                    <!-- Key Insight Box -->
+                    <div class="info-card p-4">
+                        <h3 class="font-semibold text-gray-800 mb-2">Key Insight</h3>
+                        <p class="text-gray-700">This sample demonstrates that <strong class="nv-green">memory alignment can affect throughput by 2-10x</strong>. GPUs achieve peak memory bandwidth only when memory accesses are properly aligned and coalesced.</p>
+                    </div>
+
+                    <!-- What is Memory Alignment -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">What is Memory Alignment?</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <p class="text-gray-700 mb-4">Memory alignment refers to placing data at memory addresses that are multiples of the data's size or a specific boundary (like 128 bytes for optimal GPU coalescing).</p>
+                                <ul class="space-y-2 text-gray-700">
+                                    <li class="flex items-start">
+                                        <span class="text-green-500 mr-2">✓</span>
+                                        <span><strong>Aligned access:</strong> Address is a multiple of data size</span>
+                                    </li>
+                                    <li class="flex items-start">
+                                        <span class="text-red-500 mr-2">✗</span>
+                                        <span><strong>Misaligned access:</strong> Address is not a multiple of data size</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="diagram-box">
+                                <h4 class="font-semibold text-gray-700 mb-3 text-center">Memory Transaction Visualization</h4>
+                                <div class="space-y-4">
+                                    <div>
+                                        <p class="text-xs text-gray-600 mb-1">Aligned (1 transaction):</p>
+                                        <div class="flex gap-1">
+                                            <div class="memory-cell w-8 h-8 bg-green-400 rounded flex items-center justify-center text-xs font-mono">0</div>
+                                            <div class="memory-cell w-8 h-8 bg-green-400 rounded flex items-center justify-center text-xs font-mono">4</div>
+                                            <div class="memory-cell w-8 h-8 bg-green-400 rounded flex items-center justify-center text-xs font-mono">8</div>
+                                            <div class="memory-cell w-8 h-8 bg-green-400 rounded flex items-center justify-center text-xs font-mono">12</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-gray-600 mb-1">Misaligned (2+ transactions):</p>
+                                        <div class="flex gap-1">
+                                            <div class="memory-cell w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-xs font-mono">0</div>
+                                            <div class="memory-cell w-8 h-8 bg-red-300 rounded flex items-center justify-center text-xs font-mono">3</div>
+                                            <div class="memory-cell w-8 h-8 bg-red-400 rounded flex items-center justify-center text-xs font-mono">7</div>
+                                            <div class="memory-cell w-8 h-8 bg-red-500 rounded flex items-center justify-center text-xs font-mono">11</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Examples -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Code Examples: Aligned vs Misaligned Structures</h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div>
+                                <h4 class="font-medium text-green-600 mb-2">Aligned Structure (Good)</h4>
+                                <div class="code-block">
+<span class="comment">// Properly aligned structure</span>
+<span class="keyword">struct</span> <span class="type">__align__</span>(<span class="number">16</span>) <span class="type">AlignedStruct</span> {
+    <span class="type">float4</span> data;  <span class="comment">// 16 bytes, naturally aligned</span>
+};
+
+<span class="comment">// Or using built-in aligned types</span>
+<span class="type">float4</span>* aligned_array;
+<span class="function">cudaMalloc</span>(&amp;aligned_array, N * <span class="keyword">sizeof</span>(<span class="type">float4</span>));
+</div>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-red-600 mb-2">Misaligned Structure (Bad)</h4>
+                                <div class="code-block">
+<span class="comment">// Misaligned structure - padding issues</span>
+<span class="keyword">struct</span> <span class="type">MisalignedStruct</span> {
+    <span class="type">char</span> c;       <span class="comment">// 1 byte</span>
+    <span class="type">float</span> f;      <span class="comment">// 4 bytes at offset 1 (bad!)</span>
+    <span class="type">char</span> c2;      <span class="comment">// 1 byte</span>
+    <span class="type">double</span> d;     <span class="comment">// 8 bytes at offset 6 (bad!)</span>
+};
+<span class="comment">// Total: 15 bytes, but sizeof = 24 with padding</span>
+</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Comparison -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Performance Impact</h3>
+                        <div class="bg-slate-50 p-6 rounded-lg">
+                            <h4 class="font-medium text-gray-700 mb-4">Per-Element Copy Throughput Comparison</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm text-gray-600">Aligned float4 (16-byte aligned)</span>
+                                        <span class="text-sm font-semibold nv-green">~800 GB/s</span>
+                                    </div>
+                                    <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="perf-bar h-full bg-green-500 rounded-full" style="width: 100%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm text-gray-600">Aligned float2 (8-byte aligned)</span>
+                                        <span class="text-sm font-semibold text-green-600">~700 GB/s</span>
+                                    </div>
+                                    <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="perf-bar h-full bg-green-400 rounded-full" style="width: 87%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm text-gray-600">Misaligned 12-byte struct</span>
+                                        <span class="text-sm font-semibold text-yellow-600">~400 GB/s</span>
+                                    </div>
+                                    <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="perf-bar h-full bg-yellow-400 rounded-full" style="width: 50%"></div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm text-gray-600">Misaligned 9-byte struct</span>
+                                        <span class="text-sm font-semibold text-red-600">~150 GB/s</span>
+                                    </div>
+                                    <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="perf-bar h-full bg-red-400 rounded-full" style="width: 19%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-4">* Representative values on H100 GPU. Actual performance varies by hardware.</p>
+                        </div>
+                    </div>
+
+                    <!-- Best Practices -->
+                    <div class="warning-card p-4">
+                        <h3 class="font-semibold text-amber-800 mb-2">Best Practices</h3>
+                        <ul class="space-y-1 text-amber-900 text-sm">
+                            <li>• Use <code class="bg-amber-100 px-1 rounded">__align__(N)</code> specifier for custom alignment</li>
+                            <li>• Prefer built-in vector types: <code class="bg-amber-100 px-1 rounded">float2</code>, <code class="bg-amber-100 px-1 rounded">float4</code>, <code class="bg-amber-100 px-1 rounded">int4</code></li>
+                            <li>• Ensure structure sizes are multiples of largest member's alignment</li>
+                            <li>• Order structure members from largest to smallest alignment</li>
+                            <li>• Use <code class="bg-amber-100 px-1 rounded">cudaMallocPitch()</code> for 2D arrays to ensure row alignment</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: transpose -->
+            <section id="tab-content-transpose" class="tab-content hidden">
+                <div class="space-y-8 fade-in">
+                    <!-- Header -->
+                    <div class="text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Matrix Transpose Optimization</h2>
+                        <p class="text-gray-600">Achieving high performance through shared memory and bank conflict avoidance</p>
+                    </div>
+
+                    <!-- Key Insight Box -->
+                    <div class="info-card p-4">
+                        <h3 class="font-semibold text-gray-800 mb-2">The Problem</h3>
+                        <p class="text-gray-700">Matrix transpose is memory-bound. A naive implementation has <strong class="text-red-600">coalesced reads but strided writes</strong> (or vice versa), wasting memory bandwidth. This sample shows how shared memory solves this problem.</p>
+                    </div>
+
+                    <!-- The Challenge Visualization -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">The Transpose Challenge</h3>
+                        <div class="grid md:grid-cols-3 gap-6">
+                            <div class="diagram-box text-center">
+                                <h4 class="font-semibold text-gray-700 mb-3">Input Matrix (Row-major)</h4>
+                                <div class="inline-grid grid-cols-4 gap-1 text-xs">
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">0</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">1</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">2</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">3</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">4</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">5</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">6</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">7</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">8</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">9</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">10</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">11</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">12</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">13</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">14</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">15</div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">Rows are contiguous in memory</p>
+                            </div>
+                            <div class="flex items-center justify-center">
+                                <div class="text-4xl text-gray-400">→</div>
+                            </div>
+                            <div class="diagram-box text-center">
+                                <h4 class="font-semibold text-gray-700 mb-3">Output (Transposed)</h4>
+                                <div class="inline-grid grid-cols-4 gap-1 text-xs">
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">0</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">4</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">8</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">12</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">1</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">5</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">9</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">13</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">2</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">6</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">10</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">14</div>
+                                    <div class="w-8 h-8 bg-blue-400 rounded flex items-center justify-center">3</div>
+                                    <div class="w-8 h-8 bg-green-400 rounded flex items-center justify-center">7</div>
+                                    <div class="w-8 h-8 bg-yellow-400 rounded flex items-center justify-center">11</div>
+                                    <div class="w-8 h-8 bg-red-400 rounded flex items-center justify-center">15</div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">Columns become rows</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Implementation Approaches -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Three Implementation Approaches</h3>
+                        <div class="grid md:grid-cols-3 gap-4">
+                            <!-- Naive -->
+                            <div class="border rounded-lg p-4 border-red-200 bg-red-50">
+                                <h4 class="font-semibold text-red-700 mb-2">1. Naive Transpose</h4>
+                                <div class="text-sm text-gray-700 space-y-2">
+                                    <p><strong>Read:</strong> Coalesced (row)</p>
+                                    <p><strong>Write:</strong> Strided (column)</p>
+                                    <p class="text-red-600 font-medium">Problem: Poor write performance</p>
+                                </div>
+                                <div class="code-block text-xs mt-3">
+out[x*N + y] = in[y*N + x];
+<span class="comment">// Strided writes!</span>
+</div>
+                            </div>
+                            <!-- Shared Memory -->
+                            <div class="border rounded-lg p-4 border-yellow-200 bg-yellow-50">
+                                <h4 class="font-semibold text-yellow-700 mb-2">2. Shared Memory</h4>
+                                <div class="text-sm text-gray-700 space-y-2">
+                                    <p><strong>Read:</strong> Coalesced → Shared</p>
+                                    <p><strong>Write:</strong> Shared → Coalesced</p>
+                                    <p class="text-yellow-600 font-medium">Issue: Bank conflicts</p>
+                                </div>
+                                <div class="code-block text-xs mt-3">
+<span class="keyword">__shared__</span> tile[TILE][TILE];
+tile[ty][tx] = in[...];
+<span class="function">__syncthreads</span>();
+out[...] = tile[tx][ty];
+</div>
+                            </div>
+                            <!-- Conflict-Free -->
+                            <div class="border rounded-lg p-4 border-green-200 bg-green-50">
+                                <h4 class="font-semibold text-green-700 mb-2">3. Conflict-Free</h4>
+                                <div class="text-sm text-gray-700 space-y-2">
+                                    <p><strong>Read:</strong> Coalesced → Shared</p>
+                                    <p><strong>Write:</strong> Shared → Coalesced</p>
+                                    <p class="text-green-600 font-medium">Solution: +1 padding</p>
+                                </div>
+                                <div class="code-block text-xs mt-3">
+<span class="comment">// Add +1 to avoid conflicts</span>
+<span class="keyword">__shared__</span> tile[TILE][TILE<span class="number">+1</span>];
+<span class="comment">// Same logic, no conflicts!</span>
+</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bank Conflict Explanation -->
+                    <div class="bg-slate-50 p-6 rounded-lg">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Understanding Shared Memory Bank Conflicts</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <p class="text-gray-700 mb-4">Shared memory is divided into 32 banks. When multiple threads in a warp access the same bank (but different addresses), accesses are serialized.</p>
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex items-center">
+                                        <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                                        <span><strong>No conflict:</strong> Each thread accesses different bank</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
+                                        <span><strong>2-way conflict:</strong> 2 threads same bank = 2x slower</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+                                        <span><strong>32-way conflict:</strong> All threads same bank = 32x slower</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="diagram-box">
+                                <h4 class="font-semibold text-gray-700 mb-3 text-center">Column Access Pattern</h4>
+                                <div class="grid grid-cols-8 gap-1 text-xs">
+                                    <div class="col-span-8 text-center text-gray-500 mb-1">Banks 0-7 (of 32)</div>
+                                    <div class="h-6 bg-red-400 rounded flex items-center justify-center text-white">T0</div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-red-400 rounded flex items-center justify-center text-white">T1</div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                    <div class="h-6 bg-gray-200 rounded"></div>
+                                </div>
+                                <p class="text-xs text-red-600 mt-2 text-center">Column access = all threads hit bank 0!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Results -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Performance Comparison</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Conflict-Free Shared Memory</span>
+                                    <span class="text-sm font-semibold nv-green">~95% peak bandwidth</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-green-500 rounded-full" style="width: 95%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Shared Memory (with bank conflicts)</span>
+                                    <span class="text-sm font-semibold text-yellow-600">~60% peak bandwidth</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-yellow-400 rounded-full" style="width: 60%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Naive (strided global memory)</span>
+                                    <span class="text-sm font-semibold text-red-600">~15% peak bandwidth</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-red-400 rounded-full" style="width: 15%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Solution -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Optimized Transpose Kernel</h3>
+                        <div class="code-block">
+<span class="preprocessor">#define TILE_DIM 32</span>
+<span class="preprocessor">#define BLOCK_ROWS 8</span>
+
+<span class="keyword">__global__</span> <span class="keyword">void</span> <span class="function">transposeCoalesced</span>(<span class="type">float</span>* out, <span class="type">float</span>* in, <span class="type">int</span> width, <span class="type">int</span> height) {
+    <span class="comment">// +1 padding eliminates bank conflicts!</span>
+    <span class="keyword">__shared__</span> <span class="type">float</span> tile[TILE_DIM][TILE_DIM + <span class="number">1</span>];
+    
+    <span class="type">int</span> x = blockIdx.x * TILE_DIM + threadIdx.x;
+    <span class="type">int</span> y = blockIdx.y * TILE_DIM + threadIdx.y;
+    
+    <span class="comment">// Coalesced read from global memory into shared memory</span>
+    <span class="keyword">for</span> (<span class="type">int</span> j = <span class="number">0</span>; j < TILE_DIM; j += BLOCK_ROWS) {
+        tile[threadIdx.y + j][threadIdx.x] = in[(y + j) * width + x];
+    }
+    
+    <span class="function">__syncthreads</span>();
+    
+    <span class="comment">// Swap x and y for transposed output position</span>
+    x = blockIdx.y * TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TILE_DIM + threadIdx.y;
+    
+    <span class="comment">// Coalesced write from shared memory to global memory</span>
+    <span class="keyword">for</span> (<span class="type">int</span> j = <span class="number">0</span>; j < TILE_DIM; j += BLOCK_ROWS) {
+        out[(y + j) * height + x] = tile[threadIdx.x][threadIdx.y + j];
+    }
+}
+</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: UnifiedMemoryPerf -->
+            <section id="tab-content-unifiedMemory" class="tab-content hidden">
+                <div class="space-y-8 fade-in">
+                    <!-- Header -->
+                    <div class="text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">Unified Memory Performance Comparison</h2>
+                        <p class="text-gray-600">Comparing memory types using matrix multiplication as benchmark</p>
+                    </div>
+
+                    <!-- Key Insight Box -->
+                    <div class="info-card p-4">
+                        <h3 class="font-semibold text-gray-800 mb-2">What This Sample Tests</h3>
+                        <p class="text-gray-700">This sample compares <strong>Unified Memory</strong> (with and without hints) against <strong>zero-copy buffers</strong>, <strong>pageable memory</strong>, and <strong>page-locked memory</strong> for both synchronous and asynchronous transfers.</p>
+                    </div>
+
+                    <!-- Memory Types Overview -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Memory Types Explained</h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <!-- Pageable Memory -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span class="w-3 h-3 bg-gray-400 rounded-full mr-2"></span>
+                                    Pageable Memory
+                                </h4>
+                                <p class="text-sm text-gray-600 mb-2">Standard CPU memory allocated with <code class="bg-gray-100 px-1 rounded">malloc()</code></p>
+                                <ul class="text-xs text-gray-500 space-y-1">
+                                    <li>• Can be swapped to disk by OS</li>
+                                    <li>• Requires staging buffer for GPU transfer</li>
+                                    <li>• Slowest transfer performance</li>
+                                </ul>
+                            </div>
+                            <!-- Page-Locked Memory -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span class="w-3 h-3 bg-blue-400 rounded-full mr-2"></span>
+                                    Page-Locked (Pinned) Memory
+                                </h4>
+                                <p class="text-sm text-gray-600 mb-2">Allocated with <code class="bg-gray-100 px-1 rounded">cudaMallocHost()</code></p>
+                                <ul class="text-xs text-gray-500 space-y-1">
+                                    <li>• Cannot be swapped - always in RAM</li>
+                                    <li>• Direct DMA transfers to GPU</li>
+                                    <li>• Enables async transfers with streams</li>
+                                </ul>
+                            </div>
+                            <!-- Zero-Copy Memory -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span class="w-3 h-3 bg-yellow-400 rounded-full mr-2"></span>
+                                    Zero-Copy Memory
+                                </h4>
+                                <p class="text-sm text-gray-600 mb-2">Pinned memory mapped to GPU: <code class="bg-gray-100 px-1 rounded">cudaHostAlloc(..., cudaHostAllocMapped)</code></p>
+                                <ul class="text-xs text-gray-500 space-y-1">
+                                    <li>• GPU accesses host memory directly</li>
+                                    <li>• No explicit copy needed</li>
+                                    <li>• Good for sparse access patterns</li>
+                                </ul>
+                            </div>
+                            <!-- Unified Memory -->
+                            <div class="border rounded-lg p-4 border-green-300 bg-green-50">
+                                <h4 class="font-semibold text-green-700 mb-2 flex items-center">
+                                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                                    Unified Memory
+                                </h4>
+                                <p class="text-sm text-gray-600 mb-2">Allocated with <code class="bg-gray-100 px-1 rounded">cudaMallocManaged()</code></p>
+                                <ul class="text-xs text-gray-500 space-y-1">
+                                    <li>• Single pointer for CPU and GPU</li>
+                                    <li>• Automatic data migration on access</li>
+                                    <li>• Can use hints for optimization</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Unified Memory Hints -->
+                    <div class="bg-slate-50 p-6 rounded-lg">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Unified Memory Performance Hints</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-3">cudaMemPrefetchAsync()</h4>
+                                <div class="code-block text-sm">
+<span class="comment">// Prefetch data to GPU before kernel</span>
+<span class="function">cudaMemPrefetchAsync</span>(ptr, size, deviceId, stream);
+<span class="function">myKernel</span>&lt;&lt;&lt;...&gt;&gt;&gt;(...);
+
+<span class="comment">// Prefetch back to CPU</span>
+<span class="function">cudaMemPrefetchAsync</span>(ptr, size, <span class="type">cudaCpuDeviceId</span>, stream);
+</div>
+                                <p class="text-xs text-gray-500 mt-2">Initiates migration before data is needed</p>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-3">cudaMemAdvise()</h4>
+                                <div class="code-block text-sm">
+<span class="comment">// Hint: data will be read by GPU</span>
+<span class="function">cudaMemAdvise</span>(ptr, size, 
+    <span class="type">cudaMemAdviseSetReadMostly</span>, deviceId);
+
+<span class="comment">// Hint: GPU will access this frequently</span>
+<span class="function">cudaMemAdvise</span>(ptr, size,
+    <span class="type">cudaMemAdviseSetPreferredLocation</span>, deviceId);
+</div>
+                                <p class="text-xs text-gray-500 mt-2">Gives runtime hints about access patterns</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparison Table -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Memory Type Comparison</h3>
+                        <div class="overflow-x-auto">
+                            <table class="comparison-table w-full text-sm border-collapse">
+                                <thead>
+                                    <tr>
+                                        <th class="border p-3 text-left">Memory Type</th>
+                                        <th class="border p-3 text-left">Transfer</th>
+                                        <th class="border p-3 text-left">Async Support</th>
+                                        <th class="border p-3 text-left">Best Use Case</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="border p-3 font-medium">Pageable</td>
+                                        <td class="border p-3 text-red-600">Slowest</td>
+                                        <td class="border p-3">No</td>
+                                        <td class="border p-3">Simple prototypes</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="border p-3 font-medium">Page-Locked</td>
+                                        <td class="border p-3 text-green-600">Fast</td>
+                                        <td class="border p-3">Yes</td>
+                                        <td class="border p-3">Streaming, overlapping</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="border p-3 font-medium">Zero-Copy</td>
+                                        <td class="border p-3 text-yellow-600">No copy, direct</td>
+                                        <td class="border p-3">N/A</td>
+                                        <td class="border p-3">Sparse access, integrated GPUs</td>
+                                    </tr>
+                                    <tr class="bg-green-50">
+                                        <td class="border p-3 font-medium">Unified Memory</td>
+                                        <td class="border p-3 text-blue-600">Automatic</td>
+                                        <td class="border p-3">With hints</td>
+                                        <td class="border p-3">Ease of use, complex data</td>
+                                    </tr>
+                                    <tr class="bg-green-50">
+                                        <td class="border p-3 font-medium">Unified + Hints</td>
+                                        <td class="border p-3 nv-green font-semibold">Near optimal</td>
+                                        <td class="border p-3">Yes</td>
+                                        <td class="border p-3">Production code</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Performance Chart -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Relative Performance (Matrix Multiplication)</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Page-Locked + Async Transfer</span>
+                                    <span class="text-sm font-semibold nv-green">100% (baseline)</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-green-500 rounded-full" style="width: 100%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Unified Memory + Prefetch Hints</span>
+                                    <span class="text-sm font-semibold text-green-600">~95%</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-green-400 rounded-full" style="width: 95%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Unified Memory (no hints)</span>
+                                    <span class="text-sm font-semibold text-yellow-600">~70%</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-yellow-400 rounded-full" style="width: 70%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Zero-Copy (discrete GPU)</span>
+                                    <span class="text-sm font-semibold text-orange-600">~30%</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-orange-400 rounded-full" style="width: 30%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-sm text-gray-600">Pageable + Sync Transfer</span>
+                                    <span class="text-sm font-semibold text-red-600">~50%</span>
+                                </div>
+                                <div class="h-6 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="perf-bar h-full bg-red-400 rounded-full" style="width: 50%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-4">* Performance varies by GPU, system, and workload characteristics</p>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div class="warning-card p-4">
+                        <h3 class="font-semibold text-amber-800 mb-2">Recommendations</h3>
+                        <ul class="space-y-1 text-amber-900 text-sm">
+                            <li>• <strong>Development:</strong> Start with Unified Memory for simplicity</li>
+                            <li>• <strong>Production:</strong> Add prefetch hints for near-optimal performance</li>
+                            <li>• <strong>Streaming workloads:</strong> Use page-locked memory with async transfers</li>
+                            <li>• <strong>Integrated GPUs:</strong> Zero-copy can be optimal (shared physical memory)</li>
+                            <li>• <strong>Avoid:</strong> Pageable memory for performance-critical code</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tab Content: cudaGraphs -->
+            <section id="tab-content-cudaGraphs" class="tab-content hidden">
+                <div class="space-y-8 fade-in">
+                    <!-- Header -->
+                    <div class="text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-2">CUDA Graphs Performance Scaling</h2>
+                        <p class="text-gray-600">Reducing launch overhead through graph-based execution</p>
+                    </div>
+
+                    <!-- Key Insight Box -->
+                    <div class="info-card p-4">
+                        <h3 class="font-semibold text-gray-800 mb-2">The Problem CUDA Graphs Solve</h3>
+                        <p class="text-gray-700">Each kernel launch incurs <strong>CPU overhead (~5-10 μs)</strong>. For workloads with many small kernels, this overhead becomes significant. CUDA Graphs capture a sequence of operations once and replay them with minimal overhead.</p>
+                    </div>
+
+                    <!-- Traditional vs Graph Launch -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Traditional Launch vs Graph Launch</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <!-- Traditional -->
+                            <div class="border rounded-lg p-4 border-red-200 bg-red-50">
+                                <h4 class="font-semibold text-red-700 mb-3">Traditional Kernel Launch</h4>
+                                <div class="space-y-2">
+                                    <div class="flex items-center text-sm">
+                                        <div class="w-20 h-8 bg-blue-400 rounded mr-2 flex items-center justify-center text-white text-xs">Kernel A</div>
+                                        <div class="w-12 h-8 bg-red-300 rounded mr-2 flex items-center justify-center text-xs">5μs</div>
+                                        <span class="text-gray-500 text-xs">CPU overhead</span>
+                                    </div>
+                                    <div class="flex items-center text-sm">
+                                        <div class="w-20 h-8 bg-green-400 rounded mr-2 flex items-center justify-center text-white text-xs">Kernel B</div>
+                                        <div class="w-12 h-8 bg-red-300 rounded mr-2 flex items-center justify-center text-xs">5μs</div>
+                                        <span class="text-gray-500 text-xs">CPU overhead</span>
+                                    </div>
+                                    <div class="flex items-center text-sm">
+                                        <div class="w-20 h-8 bg-purple-400 rounded mr-2 flex items-center justify-center text-white text-xs">Kernel C</div>
+                                        <div class="w-12 h-8 bg-red-300 rounded mr-2 flex items-center justify-center text-xs">5μs</div>
+                                        <span class="text-gray-500 text-xs">CPU overhead</span>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-red-600 mt-3">Total overhead: 15μs for 3 kernels</p>
+                            </div>
+                            <!-- Graph -->
+                            <div class="border rounded-lg p-4 border-green-200 bg-green-50">
+                                <h4 class="font-semibold text-green-700 mb-3">CUDA Graph Launch</h4>
+                                <div class="space-y-2">
+                                    <div class="flex items-center text-sm">
+                                        <div class="border-2 border-dashed border-green-500 rounded p-2 mr-2">
+                                            <div class="flex gap-1">
+                                                <div class="w-14 h-6 bg-blue-400 rounded flex items-center justify-center text-white text-xs">A</div>
+                                                <div class="w-14 h-6 bg-green-400 rounded flex items-center justify-center text-white text-xs">B</div>
+                                                <div class="w-14 h-6 bg-purple-400 rounded flex items-center justify-center text-white text-xs">C</div>
+                                            </div>
+                                        </div>
+                                        <div class="w-12 h-8 bg-green-300 rounded mr-2 flex items-center justify-center text-xs">~1μs</div>
+                                    </div>
+                                    <p class="text-xs text-gray-600 mt-2">Graph captured once, executed many times</p>
+                                </div>
+                                <p class="text-xs text-green-600 mt-3">Total overhead: ~1μs for entire graph!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graph Lifecycle -->
+                    <div class="bg-slate-50 p-6 rounded-lg">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">CUDA Graph Lifecycle</h3>
+                        <div class="flex flex-col md:flex-row items-center justify-center gap-4">
+                            <div class="text-center">
+                                <div class="w-24 h-24 bg-blue-100 rounded-lg flex items-center justify-center border-2 border-blue-300">
+                                    <span class="text-3xl">📝</span>
+                                </div>
+                                <p class="text-sm font-medium mt-2">1. Define</p>
+                                <p class="text-xs text-gray-500">Create graph structure</p>
+                            </div>
+                            <div class="text-2xl text-gray-300 hidden md:block">→</div>
+                            <div class="text-center">
+                                <div class="w-24 h-24 bg-yellow-100 rounded-lg flex items-center justify-center border-2 border-yellow-300">
+                                    <span class="text-3xl">🔧</span>
+                                </div>
+                                <p class="text-sm font-medium mt-2">2. Instantiate</p>
+                                <p class="text-xs text-gray-500">Compile to executable</p>
+                            </div>
+                            <div class="text-2xl text-gray-300 hidden md:block">→</div>
+                            <div class="text-center">
+                                <div class="w-24 h-24 bg-green-100 rounded-lg flex items-center justify-center border-2 border-green-300">
+                                    <span class="text-3xl">🚀</span>
+                                </div>
+                                <p class="text-sm font-medium mt-2">3. Execute</p>
+                                <p class="text-xs text-gray-500">Launch with low overhead</p>
+                            </div>
+                            <div class="text-2xl text-gray-300 hidden md:block">→</div>
+                            <div class="text-center">
+                                <div class="w-24 h-24 bg-purple-100 rounded-lg flex items-center justify-center border-2 border-purple-300">
+                                    <span class="text-3xl">🔄</span>
+                                </div>
+                                <p class="text-sm font-medium mt-2">4. Repeat</p>
+                                <p class="text-xs text-gray-500">Re-execute or update</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Code Example -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">CUDA Graph API Example</h3>
+                        <div class="code-block">
+<span class="comment">// Method 1: Stream Capture (Recommended)</span>
+<span class="type">cudaGraph_t</span> graph;
+<span class="type">cudaGraphExec_t</span> graphExec;
+
+<span class="comment">// Begin capturing operations on stream</span>
+<span class="function">cudaStreamBeginCapture</span>(stream, <span class="type">cudaStreamCaptureModeGlobal</span>);
+
+<span class="comment">// Launch kernels as normal - they get captured</span>
+<span class="function">kernelA</span>&lt;&lt;&lt;blocks, threads, <span class="number">0</span>, stream&gt;&gt;&gt;(args...);
+<span class="function">kernelB</span>&lt;&lt;&lt;blocks, threads, <span class="number">0</span>, stream&gt;&gt;&gt;(args...);
+<span class="function">kernelC</span>&lt;&lt;&lt;blocks, threads, <span class="number">0</span>, stream&gt;&gt;&gt;(args...);
+
+<span class="comment">// End capture - creates graph</span>
+<span class="function">cudaStreamEndCapture</span>(stream, &amp;graph);
+
+<span class="comment">// Instantiate graph (compile for execution)</span>
+<span class="function">cudaGraphInstantiate</span>(&amp;graphExec, graph, <span class="type">NULL</span>, <span class="type">NULL</span>, <span class="number">0</span>);
+
+<span class="comment">// Execute graph many times with minimal overhead</span>
+<span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i < iterations; i++) {
+    <span class="function">cudaGraphLaunch</span>(graphExec, stream);
+}
+
+<span class="comment">// Cleanup</span>
+<span class="function">cudaGraphExecDestroy</span>(graphExec);
+<span class="function">cudaGraphDestroy</span>(graph);
+</div>
+                    </div>
+
+                    <!-- Performance Scaling -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Performance Scaling with Graph Size</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-3">Launch Overhead Comparison</h4>
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span>10 kernels (traditional)</span>
+                                        <span class="font-mono">~50 μs</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm nv-green">
+                                        <span>10 kernels (graph)</span>
+                                        <span class="font-mono">~3 μs</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span>100 kernels (traditional)</span>
+                                        <span class="font-mono">~500 μs</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm nv-green">
+                                        <span>100 kernels (graph)</span>
+                                        <span class="font-mono">~5 μs</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span>1000 kernels (traditional)</span>
+                                        <span class="font-mono">~5 ms</span>
+                                    </div>
+                                    <div class="flex items-center justify-between text-sm nv-green">
+                                        <span>1000 kernels (graph)</span>
+                                        <span class="font-mono">~10 μs</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-3">Speedup Factor</h4>
+                                <div class="space-y-4">
+                                    <div>
+                                        <div class="flex justify-between mb-1">
+                                            <span class="text-sm text-gray-600">10 kernels</span>
+                                            <span class="text-sm font-semibold nv-green">~17x faster</span>
+                                        </div>
+                                        <div class="h-4 bg-gray-200 rounded-full overflow-hidden">
+                                            <div class="h-full bg-green-500 rounded-full" style="width: 17%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between mb-1">
+                                            <span class="text-sm text-gray-600">100 kernels</span>
+                                            <span class="text-sm font-semibold nv-green">~100x faster</span>
+                                        </div>
+                                        <div class="h-4 bg-gray-200 rounded-full overflow-hidden">
+                                            <div class="h-full bg-green-500 rounded-full" style="width: 50%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between mb-1">
+                                            <span class="text-sm text-gray-600">1000 kernels</span>
+                                            <span class="text-sm font-semibold nv-green">~500x faster</span>
+                                        </div>
+                                        <div class="h-4 bg-gray-200 rounded-full overflow-hidden">
+                                            <div class="h-full bg-green-500 rounded-full" style="width: 100%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">Graph overhead grows sub-linearly with size</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Best Use Cases -->
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">When to Use CUDA Graphs</h3>
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <div class="border rounded-lg p-4 border-green-200 bg-green-50">
+                                <h4 class="font-semibold text-green-700 mb-2">Ideal Use Cases</h4>
+                                <ul class="text-sm text-gray-700 space-y-1">
+                                    <li>✓ Repetitive workloads (training iterations)</li>
+                                    <li>✓ Many small kernels in sequence</li>
+                                    <li>✓ Fixed computation patterns</li>
+                                    <li>✓ Real-time applications with latency constraints</li>
+                                    <li>✓ Inference pipelines</li>
+                                </ul>
+                            </div>
+                            <div class="border rounded-lg p-4 border-red-200 bg-red-50">
+                                <h4 class="font-semibold text-red-700 mb-2">Less Suitable For</h4>
+                                <ul class="text-sm text-gray-700 space-y-1">
+                                    <li>✗ Dynamic workloads (varying graph structure)</li>
+                                    <li>✗ Single large kernel (little overhead to save)</li>
+                                    <li>✗ One-time computations</li>
+                                    <li>✗ Frequently changing kernel arguments</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- API Scaling Notes -->
+                    <div class="warning-card p-4">
+                        <h3 class="font-semibold text-amber-800 mb-2">API Scaling Characteristics</h3>
+                        <ul class="space-y-1 text-amber-900 text-sm">
+                            <li>• <strong>Graph creation:</strong> O(n) with number of nodes - done once</li>
+                            <li>• <strong>Graph instantiation:</strong> O(n) - compilation step, done once</li>
+                            <li>• <strong>Graph execution:</strong> O(1) - nearly constant regardless of size</li>
+                            <li>• <strong>Graph update:</strong> O(modified nodes) - can update parameters without full rebuild</li>
+                            <li>• <strong>Memory:</strong> Graphs consume memory proportional to captured operations</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="text-center mt-12 pt-8 border-t border-slate-200 text-sm text-slate-500">
+            <p>This guide is based on NVIDIA's official CUDA samples and documentation.</p>
+            <p>Source: <a href="https://github.com/NVIDIA/cuda-samples/tree/master/Samples/6_Performance" target="_blank" rel="noopener noreferrer" class="nv-green hover:underline">NVIDIA cuda-samples/6_Performance</a></p>
+            <p class="mt-2">© 2025 AI Performance Guide. For educational purposes.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabs = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const targetTab = tab.dataset.tab;
+
+                    // Update tab styles
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    // Show/hide content
+                    tabContents.forEach(content => {
+                        if (content.id === 'tab-content-' + targetTab) {
+                            content.classList.remove('hidden');
+                            content.classList.add('fade-in');
+                        } else {
+                            content.classList.add('hidden');
+                            content.classList.remove('fade-in');
+                        }
+                    });
+                });
+            });
+
+            // Animate performance bars on scroll
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const bars = entry.target.querySelectorAll('.perf-bar');
+                        bars.forEach(bar => {
+                            const width = bar.style.width;
+                            bar.style.width = '0';
+                            setTimeout(() => {
+                                bar.style.width = width;
+                            }, 100);
+                        });
+                    }
+                });
+            }, { threshold: 0.5 });
+
+            document.querySelectorAll('.space-y-4').forEach(el => {
+                if (el.querySelector('.perf-bar')) {
+                    observer.observe(el);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+

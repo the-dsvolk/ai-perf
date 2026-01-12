@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyTorch Memory Optimization: Huge Pages & CUDA Allocator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+        }
+        .pytorch-orange { color: #EE4C2C; }
+        .bg-pytorch-orange { background-color: #EE4C2C; }
+        .border-pytorch-orange { border-color: #EE4C2C; }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        
+        .tab {
+            transition: all 0.2s ease-in-out;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+        }
+        .tab:hover {
+            color: #EE4C2C;
+        }
+        .tab.active {
+            border-bottom-color: #EE4C2C;
+            color: #EE4C2C;
+            font-weight: 600;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .code-block {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+            white-space: pre-wrap;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+        .code-block .comment { color: #66c2a5; }
+        .code-block .keyword { color: #fc8d62; }
+        .code-block .type { color: #8da0cb; }
+        .code-block .function { color: #e78ac3; }
+        .code-block .number { color: #a6d854; }
+        .code-block .string { color: #e5c07b; }
+        .code-block .variable { color: #61afef; }
+        
+        .info-card {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .info-card.warning {
+            border-left: 4px solid #f59e0b;
+            background-color: #fffbeb;
+        }
+        .info-card.success {
+            border-left: 4px solid #10b981;
+            background-color: #ecfdf5;
+        }
+        .info-card.info {
+            border-left: 4px solid #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .flow-step {
+            background-color: #ffffff;
+            border: 2px solid #e2e8f0;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-align: center;
+            min-width: 120px;
+        }
+        .flow-step.cpu { border-color: #3b82f6; background-color: #eff6ff; }
+        .flow-step.gpu { border-color: #76B900; background-color: #f0fdf4; }
+        .flow-step.memory { border-color: #EE4C2C; background-color: #fef2f2; }
+        .flow-arrow {
+            color: #9ca3af;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+        th {
+            background-color: #f8fafc;
+            font-weight: 600;
+        }
+        tr:hover {
+            background-color: #f8fafc;
+        }
+        
+        .config-option {
+            background-color: #1e293b;
+            color: #38bdf8;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="text-center mb-10">
+            <div class="flex items-center justify-center gap-3 mb-2">
+                <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none">
+                    <path d="M12.005 2C6.488 2 2 6.488 2 12.005C2 17.522 6.488 22 12.005 22C17.522 22 22 17.512 22 12.005C22 6.488 17.512 2 12.005 2Z" fill="#EE4C2C"/>
+                    <path d="M15.5 7.5C15.5 8.328 14.828 9 14 9C13.172 9 12.5 8.328 12.5 7.5C12.5 6.672 13.172 6 14 6C14.828 6 15.5 6.672 15.5 7.5Z" fill="white"/>
+                    <path d="M17 12C17 14.761 14.761 17 12 17C9.239 17 7 14.761 7 12C7 9.239 9.239 7 12 7" stroke="white" stroke-width="1.5" fill="none"/>
+                </svg>
+                <h1 class="text-3xl sm:text-4xl font-bold text-gray-800">PyTorch Memory Optimization</h1>
+            </div>
+            <p class="mt-2 text-lg text-gray-600">Linux Huge Pages, jemalloc, and CUDA Memory Allocator Configuration</p>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="flex flex-wrap gap-4 sm:gap-6 border-b border-gray-200 mb-8 pb-0">
+            <button class="tab active" data-tab="hugepages">Linux Huge Pages</button>
+            <button class="tab" data-tab="jemalloc">jemalloc Integration</button>
+            <button class="tab" data-tab="cuda-alloc">CUDA Allocator</button>
+            <button class="tab" data-tab="best-practices">Best Practices</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main>
+            <!-- Huge Pages Tab -->
+            <section id="hugepages" class="tab-content fade-in">
+                <div class="grid gap-6">
+                    <div class="info-card info">
+                        <h3 class="text-lg font-semibold mb-2">What are Huge Pages?</h3>
+                        <p class="text-gray-700">Linux Huge Pages use larger memory pages (2MB or 1GB instead of 4KB) to reduce TLB (Translation Lookaside Buffer) misses. This can significantly improve memory access performance for large allocations typical in deep learning.</p>
+                    </div>
+
+                    <div class="flow-diagram my-6">
+                        <div class="flow-step cpu">CPU Request</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step memory">TLB Lookup</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step" style="border-color: #f59e0b; background-color: #fffbeb;">Page Table</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step cpu">Physical Memory</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">1. Check and Configure Huge Pages</h3>
+                        <p class="text-gray-600 mb-4">First, check your current huge pages configuration:</p>
+                        <div class="code-block"><span class="comment"># View current huge pages configuration</span>
+cat /proc/meminfo | grep -i huge
+
+<span class="comment"># Check available huge page sizes</span>
+ls /sys/kernel/mm/hugepages/
+
+<span class="comment"># Allocate 1024 huge pages of 2MB each (2GB total)</span>
+<span class="keyword">sudo</span> sysctl -w vm.nr_hugepages=<span class="number">1024</span>
+
+<span class="comment"># Make it persistent across reboots</span>
+<span class="keyword">echo</span> <span class="string">"vm.nr_hugepages=1024"</span> | <span class="keyword">sudo</span> tee -a /etc/sysctl.conf</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">2. Transparent Huge Pages (THP)</h3>
+                        <p class="text-gray-600 mb-4">The easiest approach — THP handles huge pages automatically:</p>
+                        <div class="code-block"><span class="comment"># Enable THP (if not already enabled)</span>
+<span class="keyword">echo</span> <span class="string">"always"</span> | <span class="keyword">sudo</span> tee /sys/kernel/mm/transparent_hugepage/enabled
+
+<span class="comment"># Check current THP status</span>
+cat /sys/kernel/mm/transparent_hugepage/enabled
+
+<span class="comment"># Options: [always] madvise never</span></div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">3. Explicit Huge Pages via mmap</h3>
+                        <p class="text-gray-600 mb-4">Allocate PyTorch tensors on huge pages using memory-mapped files:</p>
+                        <div class="code-block"><span class="keyword">import</span> torch
+<span class="keyword">import</span> ctypes
+<span class="keyword">import</span> os
+
+<span class="keyword">def</span> <span class="function">allocate_huge_pages_tensor</span>(shape, dtype=torch.float32):
+    <span class="string">"""Allocate a PyTorch tensor backed by huge pages."""</span>
+    
+    <span class="comment"># Calculate size in bytes</span>
+    numel = <span class="number">1</span>
+    <span class="keyword">for</span> s <span class="keyword">in</span> shape:
+        numel *= s
+    dtype_size = torch.tensor([], dtype=dtype).element_size()
+    size_bytes = numel * dtype_size
+    
+    <span class="comment"># Round up to huge page size (2MB)</span>
+    HUGE_PAGE_SIZE = <span class="number">2</span> * <span class="number">1024</span> * <span class="number">1024</span>
+    aligned_size = ((size_bytes + HUGE_PAGE_SIZE - <span class="number">1</span>) // HUGE_PAGE_SIZE) * HUGE_PAGE_SIZE
+    
+    <span class="comment"># mmap flags</span>
+    MAP_HUGETLB = <span class="number">0x40000</span>
+    MAP_ANONYMOUS = <span class="number">0x20</span>
+    MAP_PRIVATE = <span class="number">0x02</span>
+    PROT_READ = <span class="number">0x1</span>
+    PROT_WRITE = <span class="number">0x2</span>
+    
+    libc = ctypes.CDLL(<span class="string">"libc.so.6"</span>, use_errno=<span class="keyword">True</span>)
+    libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, 
+                          ctypes.c_int, ctypes.c_int, ctypes.c_long]
+    libc.mmap.restype = ctypes.c_void_p
+    
+    ptr = libc.mmap(<span class="keyword">None</span>, aligned_size, 
+                    PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, 
+                    -<span class="number">1</span>, <span class="number">0</span>)
+    
+    <span class="keyword">if</span> ptr == ctypes.c_void_p(-<span class="number">1</span>).value:
+        <span class="keyword">raise</span> OSError(<span class="string">f"mmap failed: {os.strerror(ctypes.get_errno())}"</span>)
+    
+    <span class="comment"># Create tensor from pointer</span>
+    tensor = torch.frombuffer(
+        (ctypes.c_char * size_bytes).from_address(ptr),
+        dtype=dtype
+    ).reshape(shape)
+    
+    <span class="keyword">return</span> tensor, ptr, aligned_size
+
+<span class="comment"># Usage</span>
+tensor, ptr, size = allocate_huge_pages_tensor((<span class="number">1024</span>, <span class="number">1024</span>, <span class="number">1024</span>), torch.float32)</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">4. NUMA-Aware Huge Pages</h3>
+                        <p class="text-gray-600 mb-4">For multi-socket systems, bind memory to specific NUMA nodes:</p>
+                        <div class="code-block"><span class="comment"># Allocate huge pages on specific NUMA node</span>
+<span class="keyword">echo</span> <span class="number">512</span> | <span class="keyword">sudo</span> tee /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
+<span class="keyword">echo</span> <span class="number">512</span> | <span class="keyword">sudo</span> tee /sys/devices/system/node/node1/hugepages/hugepages-2048kB/nr_hugepages
+
+<span class="comment"># Run with numactl</span>
+numactl --cpunodebind=<span class="number">0</span> --membind=<span class="number">0</span> python train.py</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- jemalloc Tab -->
+            <section id="jemalloc" class="tab-content hidden fade-in">
+                <div class="grid gap-6">
+                    <div class="info-card info">
+                        <h3 class="text-lg font-semibold mb-2">Why jemalloc?</h3>
+                        <p class="text-gray-700">jemalloc is a high-performance memory allocator that can significantly reduce memory fragmentation and improve allocation speed. It has built-in support for Transparent Huge Pages (THP) and provides better multi-threaded performance than glibc's default allocator.</p>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Installation</h3>
+                        <div class="code-block"><span class="comment"># Ubuntu/Debian</span>
+<span class="keyword">sudo</span> apt-get install libjemalloc2 libjemalloc-dev
+
+<span class="comment"># CentOS/RHEL</span>
+<span class="keyword">sudo</span> yum install jemalloc jemalloc-devel
+
+<span class="comment"># Verify installation</span>
+ls -la /usr/lib/x86_64-linux-gnu/libjemalloc.so*</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Running PyTorch with jemalloc</h3>
+                        <p class="text-gray-600 mb-4">Use LD_PRELOAD to replace the default allocator:</p>
+                        <div class="code-block"><span class="comment"># Basic usage</span>
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2 python train.py
+
+<span class="comment"># With optimized configuration for ML workloads</span>
+MALLOC_CONF=<span class="string">"oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000,thp:always"</span> \
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2 \
+python train.py</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">MALLOC_CONF Options Explained</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Option</th>
+                                    <th>Value</th>
+                                    <th>Purpose</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code class="config-option">oversize_threshold</code></td>
+                                    <td>1</td>
+                                    <td>Allocations ≥1 byte bypass tcache for large allocs</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">background_thread</code></td>
+                                    <td>true</td>
+                                    <td>Enable background thread for memory management</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">metadata_thp</code></td>
+                                    <td>auto</td>
+                                    <td>Use THP for jemalloc's internal metadata</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">dirty_decay_ms</code></td>
+                                    <td>9000000000</td>
+                                    <td>Delay returning dirty pages to OS (keeps memory hot)</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">muzzy_decay_ms</code></td>
+                                    <td>9000000000</td>
+                                    <td>Delay returning muzzy pages to OS</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">thp</code></td>
+                                    <td>always</td>
+                                    <td>Always use THP when available</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="info-card success">
+                        <h3 class="text-lg font-semibold mb-3">Complete Training Script Example</h3>
+                        <div class="code-block"><span class="comment">#!/bin/bash</span>
+<span class="comment"># train_optimized.sh</span>
+
+<span class="comment"># Enable Transparent Huge Pages</span>
+<span class="keyword">echo</span> <span class="string">"always"</span> | <span class="keyword">sudo</span> tee /sys/kernel/mm/transparent_hugepage/enabled
+
+<span class="comment"># Set jemalloc configuration</span>
+<span class="keyword">export</span> MALLOC_CONF=<span class="string">"oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000,thp:always"</span>
+
+<span class="comment"># Preload jemalloc</span>
+<span class="keyword">export</span> LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+
+<span class="comment"># PyTorch optimizations</span>
+<span class="keyword">export</span> OMP_NUM_THREADS=<span class="variable">$(nproc)</span>
+<span class="keyword">export</span> MKL_NUM_THREADS=<span class="variable">$(nproc)</span>
+
+<span class="comment"># Run training</span>
+python train.py <span class="string">"$@"</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CUDA Allocator Tab -->
+            <section id="cuda-alloc" class="tab-content hidden fade-in">
+                <div class="grid gap-6">
+                    <div class="info-card info">
+                        <h3 class="text-lg font-semibold mb-2">PYTORCH_CUDA_ALLOC_CONF</h3>
+                        <p class="text-gray-700">This environment variable controls PyTorch's <strong>CUDA caching memory allocator</strong>. Instead of calling slow cudaMalloc/cudaFree directly, PyTorch caches freed GPU memory for reuse. This variable lets you tune the allocator's behavior.</p>
+                    </div>
+
+                    <div class="flow-diagram my-6">
+                        <div class="flow-step gpu">PyTorch Tensor</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step memory">Caching Allocator</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step" style="border-color: #76B900; background-color: #f0fdf4;">Memory Pool</div>
+                        <span class="flow-arrow">→</span>
+                        <div class="flow-step gpu">CUDA Memory</div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Configuration Options</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Option</th>
+                                    <th>Default</th>
+                                    <th>Purpose</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code class="config-option">max_split_size_mb</code></td>
+                                    <td>Unlimited</td>
+                                    <td>Max size (MB) of memory block that can be split</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">expandable_segments</code></td>
+                                    <td>False</td>
+                                    <td>Use expandable segments to reduce fragmentation</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">garbage_collection_threshold</code></td>
+                                    <td>0.0</td>
+                                    <td>Trigger GC when this fraction of memory is cached</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">roundup_power2_divisions</code></td>
+                                    <td>0</td>
+                                    <td>How to round up allocation sizes</td>
+                                </tr>
+                                <tr>
+                                    <td><code class="config-option">backend</code></td>
+                                    <td>native</td>
+                                    <td>Allocator backend (native, cudaMallocAsync)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="info-card">
+                            <h4 class="font-semibold mb-2 pytorch-orange">Reduce Fragmentation</h4>
+                            <p class="text-sm text-gray-600 mb-3">OOM errors even when nvidia-smi shows free memory</p>
+                            <div class="code-block"><span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"expandable_segments:True"</span></div>
+                        </div>
+                        <div class="info-card">
+                            <h4 class="font-semibold mb-2 pytorch-orange">Prevent Large Block Splitting</h4>
+                            <p class="text-sm text-gray-600 mb-3">Preserve large blocks for future allocations</p>
+                            <div class="code-block"><span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"max_split_size_mb:512"</span></div>
+                        </div>
+                        <div class="info-card">
+                            <h4 class="font-semibold mb-2 pytorch-orange">Enable Garbage Collection</h4>
+                            <p class="text-sm text-gray-600 mb-3">Release cached memory when threshold reached</p>
+                            <div class="code-block"><span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"garbage_collection_threshold:0.8"</span></div>
+                        </div>
+                        <div class="info-card">
+                            <h4 class="font-semibold mb-2 pytorch-orange">Use CUDA Async Allocator</h4>
+                            <p class="text-sm text-gray-600 mb-3">CUDA 11.4+ native async allocator</p>
+                            <div class="code-block"><span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"backend:cudaMallocAsync"</span></div>
+                        </div>
+                    </div>
+
+                    <div class="info-card success">
+                        <h3 class="text-lg font-semibold mb-3">Combined Configuration Examples</h3>
+                        <div class="code-block"><span class="comment"># For OOM with "free memory" available (fragmentation)</span>
+<span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"expandable_segments:True"</span>
+
+<span class="comment"># For large model training</span>
+<span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"max_split_size_mb:512,expandable_segments:True"</span>
+
+<span class="comment"># For inference servers (minimize memory footprint)</span>
+<span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"garbage_collection_threshold:0.7,expandable_segments:True"</span>
+
+<span class="comment"># All options combined</span>
+<span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"max_split_size_mb:256,expandable_segments:True,garbage_collection_threshold:0.9"</span></div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Debugging Memory Issues</h3>
+                        <p class="text-gray-600 mb-4">Record memory allocation snapshots for analysis:</p>
+                        <div class="code-block"><span class="keyword">import</span> torch
+
+<span class="comment"># Record memory history for debugging</span>
+torch.cuda.memory._record_memory_history(max_entries=<span class="number">100000</span>)
+
+<span class="comment"># ... run your code ...</span>
+
+<span class="comment"># Save snapshot for analysis</span>
+torch.cuda.memory._dump_snapshot(<span class="string">"memory_snapshot.pickle"</span>)
+
+<span class="comment"># Visualize at: https://pytorch.org/memory_viz</span></div>
+                    </div>
+
+                    <div class="info-card warning">
+                        <h3 class="text-lg font-semibold mb-2">⚠️ Important Notes</h3>
+                        <ul class="list-disc list-inside text-gray-700 space-y-1">
+                            <li><strong>GPU memory only</strong> — This is for CUDA memory, not CPU memory</li>
+                            <li><strong>Not related to Huge Pages</strong> — CPU memory uses system allocator</li>
+                            <li><strong>Per-process setting</strong> — Must be set before PyTorch imports CUDA</li>
+                            <li><strong>Order matters</strong> — Set environment variable before <code>import torch</code></li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Best Practices Tab -->
+            <section id="best-practices" class="tab-content hidden fade-in">
+                <div class="grid gap-6">
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Performance Impact Summary</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Optimization</th>
+                                    <th>Best For</th>
+                                    <th>Typical Speedup</th>
+                                    <th>Memory Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>THP (Transparent)</td>
+                                    <td>General use, easy setup</td>
+                                    <td class="nv-green font-semibold">5-15%</td>
+                                    <td>CPU</td>
+                                </tr>
+                                <tr>
+                                    <td>Explicit 2MB pages</td>
+                                    <td>Large batch training</td>
+                                    <td class="nv-green font-semibold">10-20%</td>
+                                    <td>CPU</td>
+                                </tr>
+                                <tr>
+                                    <td>1GB pages</td>
+                                    <td>Very large models (LLMs)</td>
+                                    <td class="nv-green font-semibold">15-25%</td>
+                                    <td>CPU</td>
+                                </tr>
+                                <tr>
+                                    <td>jemalloc + THP</td>
+                                    <td>Production deployments</td>
+                                    <td class="nv-green font-semibold">10-20%</td>
+                                    <td>CPU</td>
+                                </tr>
+                                <tr>
+                                    <td>expandable_segments</td>
+                                    <td>Variable batch sizes</td>
+                                    <td class="pytorch-orange font-semibold">Prevents OOM</td>
+                                    <td>GPU</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="info-card success">
+                            <h3 class="text-lg font-semibold mb-3">✅ When to Use</h3>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>Large batch training</li>
+                                <li>Large model inference (LLMs, ViTs)</li>
+                                <li>Multi-GPU training with CPU memory bottleneck</li>
+                                <li>Data loading with large prefetch buffers</li>
+                                <li>Production inference servers</li>
+                            </ul>
+                        </div>
+                        <div class="info-card warning">
+                            <h3 class="text-lg font-semibold mb-3">❌ May Not Help</h3>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>Small models that fit in L3 cache</li>
+                                <li>GPU-bound workloads</li>
+                                <li>Systems with limited RAM</li>
+                                <li>Development/debugging (adds complexity)</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Complete Production Setup</h3>
+                        <div class="code-block"><span class="comment">#!/bin/bash</span>
+<span class="comment"># production_train.sh - Optimized PyTorch training script</span>
+
+<span class="comment"># === CPU Memory Optimizations ===</span>
+
+<span class="comment"># Enable Transparent Huge Pages</span>
+<span class="keyword">echo</span> <span class="string">"always"</span> | <span class="keyword">sudo</span> tee /sys/kernel/mm/transparent_hugepage/enabled
+
+<span class="comment"># Configure jemalloc</span>
+<span class="keyword">export</span> MALLOC_CONF=<span class="string">"oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000,thp:always"</span>
+<span class="keyword">export</span> LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+
+<span class="comment"># === GPU Memory Optimizations ===</span>
+
+<span class="comment"># CUDA allocator configuration</span>
+<span class="keyword">export</span> PYTORCH_CUDA_ALLOC_CONF=<span class="string">"max_split_size_mb:512,expandable_segments:True,garbage_collection_threshold:0.9"</span>
+
+<span class="comment"># === CPU Threading ===</span>
+
+<span class="keyword">export</span> OMP_NUM_THREADS=<span class="variable">$(nproc)</span>
+<span class="keyword">export</span> MKL_NUM_THREADS=<span class="variable">$(nproc)</span>
+<span class="keyword">export</span> NUMEXPR_NUM_THREADS=<span class="variable">$(nproc)</span>
+
+<span class="comment"># === NUMA Binding (multi-socket systems) ===</span>
+
+<span class="comment"># Uncomment for NUMA-aware execution</span>
+<span class="comment"># numactl --cpunodebind=0 --membind=0 python train.py "$@"</span>
+
+<span class="comment"># Run training</span>
+python train.py <span class="string">"$@"</span></div>
+                    </div>
+
+                    <div class="info-card">
+                        <h3 class="text-lg font-semibold mb-3">Monitoring Commands</h3>
+                        <div class="code-block"><span class="comment"># Monitor huge page usage in real-time</span>
+watch -n <span class="number">1</span> <span class="string">'cat /proc/meminfo | grep -i huge'</span>
+
+<span class="comment"># Check per-process huge page usage</span>
+grep -i huge /proc/<span class="variable">$(pgrep -f "python train.py")</span>/smaps | head -<span class="number">20</span>
+
+<span class="comment"># Monitor GPU memory with PyTorch</span>
+python -c <span class="string">"import torch; print(torch.cuda.memory_summary())"</span>
+
+<span class="comment"># Check jemalloc stats (requires jemalloc with stats enabled)</span>
+MALLOC_CONF=<span class="string">"stats_print:true"</span> python -c <span class="string">"import torch; x = torch.randn(1000,1000)"</span></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="mt-12 pt-8 border-t border-gray-200 text-center text-gray-500 text-sm">
+            <p>PyTorch Memory Optimization Guide | Part of AI Infrastructure Documentation</p>
+        </footer>
+    </div>
+
+    <script>
+        // Tab switching functionality
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.dataset.tab;
+                
+                // Update tab styles
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Show/hide content
+                tabContents.forEach(content => {
+                    if (content.id === targetId) {
+                        content.classList.remove('hidden');
+                        content.classList.add('fade-in');
+                    } else {
+                        content.classList.add('hidden');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+
+

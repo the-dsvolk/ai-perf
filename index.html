@@ -206,6 +206,22 @@
             </ul>
         </div>
         <!-- End Model Training and Inference Section -->
+
+        <!-- Model Optimization Section -->
+        <div class="chapter">
+            <h2>Model Optimization</h2>
+            <p class="chapter-description">Quantization, sparsity, and optimization techniques for accelerating LLM and diffusion model inference with NVIDIA TensorRT-LLM.</p>
+            <ul>
+                <li>
+                    <a href="ai-infra/model_optimization.html" target="_blank" rel="noopener noreferrer">
+                        Model Optimization Techniques Guide
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Comprehensive guide to PTQ (FP8, INT4 AWQ), QAT, and sparsity with real-world performance benchmarks from NVIDIA Model Optimizer</div>
+                </li>
+            </ul>
+        </div>
+        <!-- End Model Optimization Section -->
         
         <div class="chapter">
             <h2>AI Infrastructure</h2>
@@ -310,11 +326,67 @@
                     <div class="description">CUDA programming concepts, memory hierarchy, and execution model</div>
                 </li>
                 <li>
+                    <a href="ai-infra/memory-hierarchy.html" target="_blank" rel="noopener noreferrer">
+                        GPU Memory Hierarchy
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Interactive guide to GPU cache levels, cache lines, access patterns, and bandwidth optimization</div>
+                </li>
+                <li>
+                    <a href="ai-infra/cuda_performance_samples.html" target="_blank" rel="noopener noreferrer">
+                        CUDA Performance Optimization Samples
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Detailed explanations of CUDA performance samples: alignedTypes, transpose, UnifiedMemoryPerf, and cudaGraphsPerfScaling</div>
+                </li>
+                <li>
                     <a href="https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/" target="_blank" rel="noopener noreferrer">
                         CUDA Programming Model Refresher
                         <span class="file-type">EXTERNAL</span>
                     </a>
                     <div class="description">External blog: Comprehensive guide to CUDA programming fundamentals and best practices</div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="chapter">
+            <h2>PyTorch</h2>
+            <p class="chapter-description">PyTorch framework optimization, memory management, and performance tuning for training and inference.</p>
+            <ul>
+                <li>
+                    <a href="pytorch/memory_optimization.html" target="_blank" rel="noopener noreferrer">
+                        Memory Optimization: Huge Pages & CUDA Allocator
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Linux Huge Pages, jemalloc integration, and PYTORCH_CUDA_ALLOC_CONF configuration for optimal memory performance</div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="chapter">
+            <h2>Profiling</h2>
+            <p class="chapter-description">GPU profiling tools, trace capture techniques, and performance analysis workflows for containerized ML workloads.</p>
+            <ul>
+                <li>
+                    <a href="profiling/nsys-install.html" target="_blank" rel="noopener noreferrer">
+                        Nsight Systems & CUPTI: Installation and Container Mounting
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">How to download, install, and mount custom nsys and CUPTI versions into containers for GPU profiling</div>
+                </li>
+                <li>
+                    <a href="profiling/ncu_metrics.html" target="_blank" rel="noopener noreferrer">
+                        Nsight Compute Metrics Reference Guide
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Complete reference for NCU source-level metrics: instruction execution, warp stall statistics, memory access patterns, and register dependencies</div>
+                </li>
+                <li>
+                    <a href="profiling/gpu_bottlenecks.html" target="_blank" rel="noopener noreferrer">
+                        GPU Performance Bottlenecks: Diagnosis & Remedies
+                        <span class="file-type">HTML</span>
+                    </a>
+                    <div class="description">Memory bound vs compute bound vs latency bound vs underutilized GPU: profiler indicators and detailed optimization strategies</div>
                 </li>
             </ul>
         </div>
