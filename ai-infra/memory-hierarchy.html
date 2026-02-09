@@ -221,6 +221,20 @@ flowchart TB
                     </div>
                 </div>
             </div>
+
+            <!-- Data path: VRAM → L2 → SMs (cache hit/miss, bank conflict vs parallel access) -->
+            <div class="mt-8 pt-8 border-t border-slate-600">
+                <h3 class="text-lg font-semibold mb-3">Data Path: Global Memory → L2 → Streaming Multiprocessors</h3>
+                <p class="text-slate-400 text-sm mb-4">
+                    Data flows from VRAM (global memory) through the L2 cache to the SMs. A <strong class="text-slate-300">cache miss</strong> causes a high-latency fetch from VRAM into a 128-byte L2 cache line; a <strong class="text-slate-300">cache hit</strong> keeps access low latency. A warp (32 threads) typically fetches 128 bytes at a time. Inside each SM, L1/shared memory is organized in <strong class="text-slate-300">32 banks</strong>—<strong class="text-amber-400">bank conflict</strong> serializes accesses when threads hit the same bank; <strong class="nv-green">parallel access</strong> occurs when threads use different banks.
+                </p>
+                <figure class="rounded-lg overflow-hidden border border-slate-600 bg-slate-800/50">
+                    <img src="assets/gpu-memory-hierarchy.png" alt="GPU memory hierarchy: VRAM, L2 cache with 128-byte lines and fill/evict, streaming multiprocessors with L1/shared memory (32 banks), warp scheduler, SIMT execution; cache hit vs miss; bank conflict vs parallel access." class="w-full max-w-5xl mx-auto block" loading="lazy" />
+                    <figcaption class="text-center text-sm text-slate-500 py-3 px-4 border-t border-slate-600">
+                        VRAM → L2 (128-byte cache lines, cache miss/fill/evict) → SMs. Each SM: L1/Shared Memory (32 banks), instruction unit, warp scheduler, SIMT execution. Bank conflict vs parallel access in shared memory.
+                    </figcaption>
+                </figure>
+            </div>
         </section>
 
         <!-- Section 2: Cache Line Architecture -->
@@ -633,7 +647,7 @@ flowchart TD
                     </div>
                     <div>
                         <div class="nv-green font-semibold mb-2">Prefetching</div>
-                        <p class="text-slate-400">Use async copies (TMA, cp.async) to hide memory latency.</p>
+                        <p class="text-slate-400">Use async copies (<a href="TMA.html" class="text-blue-400 hover:underline">TMA</a>, cp.async) to hide memory latency.</p>
                     </div>
                 </div>
             </div>

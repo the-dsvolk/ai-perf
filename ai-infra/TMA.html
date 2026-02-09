@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tensor Memory Accelerator (TMA) - Data Path &amp; NCU Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .nv-green { color: #76B900; }
+        .bg-nv-green { background-color: #76B900; }
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .mermaid { background-color: transparent !important; }
+        .mermaid svg { max-width: 100%; }
+        .toc-link { border-left: 2px solid transparent; transition: all 0.2s ease; }
+        .toc-link:hover { border-left-color: #76B900; background: rgba(118, 185, 0, 0.1); }
+        .metric-row { border-bottom: 1px solid #334155; }
+        .metric-row:last-child { border-bottom: none; }
+    </style>
+</head>
+<body class="min-h-screen antialiased">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+        <header class="mb-12">
+            <h1 class="text-4xl font-bold mb-4">
+                <span class="nv-green">Tensor Memory Accelerator (TMA)</span>
+            </h1>
+            <p class="text-xl text-slate-400">
+                Data path with and without TMA, what to measure in NCU, and expected performance benefits (Hopper+)
+            </p>
+            <div class="mt-4 text-sm text-slate-500">
+                Related: <a href="memory-hierarchy.html" class="text-blue-400 hover:underline">GPU Memory Hierarchy</a> |
+                <a href="cuda_programming_model.html" class="text-blue-400 hover:underline">CUDA Programming Model</a> |
+                <a href="../profiling/ncu_metrics.html" class="text-blue-400 hover:underline">Nsight Compute Metrics</a>
+            </div>
+        </header>
+
+        <div class="grid lg:grid-cols-4 gap-8">
+            <aside class="lg:col-span-1">
+                <nav class="sticky top-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Contents</h2>
+                    <ul class="space-y-1 text-sm">
+                        <li><a href="#overview" class="toc-link block py-1.5 px-3 rounded text-slate-300">Overview</a></li>
+                        <li><a href="#without-tma" class="toc-link block py-1.5 px-3 rounded text-slate-300">Data Path Without TMA</a></li>
+                        <li><a href="#with-tma" class="toc-link block py-1.5 px-3 rounded text-slate-300">Data Path With TMA</a></li>
+                        <li><a href="#metrics" class="toc-link block py-1.5 px-3 rounded text-slate-300">Metrics &amp; Statistics</a></li>
+                        <li><a href="#kernel-names" class="toc-link block py-1.5 px-3 rounded text-slate-300">Kernel Names</a></li>
+                        <li><a href="#ncu" class="toc-link block py-1.5 px-3 rounded text-slate-300">Seeing TMA in NCU</a></li>
+                        <li><a href="#benefits" class="toc-link block py-1.5 px-3 rounded text-slate-300">Performance Benefits</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <main class="lg:col-span-3 space-y-10">
+                <!-- Overview -->
+                <section id="overview" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Overview</h2>
+                    <p class="text-slate-400 mb-4">
+                        <strong class="text-white">Tensor Memory Accelerator (TMA)</strong> is a dedicated hardware unit on NVIDIA Hopper (and later) GPUs that performs <strong class="text-slate-300">asynchronous bulk copies</strong> between global memory (HBM) and shared memory. A single thread can initiate a large tensor transfer; the TMA unit performs the copy in the background while warps continue with compute or other work.
+                    </p>
+                    <p class="text-slate-400">
+                        Without TMA, warps move data using regular load/store instructions (or <code class="bg-slate-700 px-1.5 py-0.5 rounded">cp.async</code> on Ampere), tying up the SM’s memory pipeline and often stalling on memory latency. With TMA, bulk copies are offloaded to the TMA unit, improving overlap and effective bandwidth. PTX uses <code class="bg-slate-700 px-1.5 py-0.5 rounded">cp.async.bulk.tensor</code>; synchronization relies on <code class="bg-slate-700 px-1.5 py-0.5 rounded">mbarrier</code> and <code class="bg-slate-700 px-1.5 py-0.5 rounded">fence.proxy.async</code>.
+                    </p>
+                </section>
+
+                <!-- Data path WITHOUT TMA -->
+                <section id="without-tma" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Data Path Without TMA</h2>
+                    <p class="text-slate-400 mb-4">
+                        Warps issue loads/stores (or small async copies) through the SM’s memory pipeline. Data flows from global memory through L2 into L1/shared. Warps often <strong class="text-amber-400">stall on memory</strong> until data arrives.
+                    </p>
+                    <div class="mermaid">
+flowchart TB
+    subgraph SM["SM (Streaming Multiprocessor)"]
+        W["Warp(s)"]
+        MP["Memory Pipeline\n(loads/stores)"]
+        W -->|"Issue load/store"| MP
+    end
+    GM["Global Memory (HBM)"]
+    L2["L2 Cache"]
+    L2 --> GM
+    MP -->|"Request"| L2
+    L2 -->|"Data (high latency if miss)"| MP
+    MP -->|"Data ready"| W
+    W -->|"Stall until data"| W
+
+    style W fill:#1e293b,stroke:#64748b
+    style MP fill:#475569,stroke:#64748b
+    style L2 fill:#3b82f6,stroke:#64748b
+    style GM fill:#6366f1,stroke:#64748b
+                    </div>
+                    <p class="text-slate-500 text-sm mt-3">
+                        Warp issues load → waits on memory pipeline → L2/global → data returns → warp resumes. Limited overlap; memory-bound kernels show high warp stalls on memory.
+                    </p>
+                </section>
+
+                <!-- Data path WITH TMA -->
+                <section id="with-tma" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Data Path With TMA</h2>
+                    <p class="text-slate-400 mb-4">
+                        One thread (or a few) issues a <strong class="nv-green">TMA copy</strong> (bulk tensor). A dedicated <strong class="nv-green">TMA unit</strong> performs the transfer asynchronously. Warps can do <strong class="nv-green">compute</strong> or issue more TMA copies while previous copies are in flight. Synchronization is explicit (mbarrier/fence).
+                    </p>
+                    <div class="mermaid">
+flowchart TB
+    subgraph SM["SM (Streaming Multiprocessor)"]
+        W["Warp(s)"]
+        TMA["TMA Unit\n(bulk copy engine)"]
+        COMPUTE["Compute / more TMA ops"]
+        W -->|"Issue TMA copy"| TMA
+        W -->|"Continue work"| COMPUTE
+        TMA -->|"Async bulk copy"| SHARED
+        TMA -.->|"Overlaps with"| COMPUTE
+    end
+    GM["Global Memory (HBM)"]
+    L2["L2 Cache"]
+    SHARED["Shared Memory"]
+    GM --> L2
+    TMA -->|"Read/write via L2"| L2
+    L2 --> TMA
+    TMA --> SHARED
+    SHARED --> COMPUTE
+
+    style W fill:#1e293b,stroke:#94a3b8
+    style TMA fill:#76B900,stroke:#76B900,color:#000
+    style COMPUTE fill:#22c55e,stroke:#22c55e,color:#000
+    style SHARED fill:#3b82f6,stroke:#64748b
+    style L2 fill:#3b82f6,stroke:#64748b
+    style GM fill:#6366f1,stroke:#64748b
+                    </div>
+                    <p class="text-slate-500 text-sm mt-3">
+                        TMA unit handles bulk transfer; warps overlap copy with compute. Better utilization and higher effective memory throughput when copy and compute are balanced.
+                    </p>
+                </section>
+
+                <!-- Metrics & Statistics -->
+                <section id="metrics" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">What to Expect in Metrics When TMA Is Present</h2>
+                    <p class="text-slate-400 mb-4">
+                        When kernels use TMA effectively, you typically see:
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-left text-slate-400 border-b border-slate-600">
+                                    <th class="py-3 pr-4">Category</th>
+                                    <th class="py-3 pr-4">Metric / Observation</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-300">
+                                <tr class="metric-row">
+                                    <td class="py-3 pr-4 font-medium">Memory throughput</td>
+                                    <td class="py-3">Higher achieved DRAM throughput (bytes/sec) and better L2 bandwidth utilization; bulk transfers are more efficient than many small loads.</td>
+                                </tr>
+                                <tr class="metric-row">
+                                    <td class="py-3 pr-4 font-medium">Warp stall reasons</td>
+                                    <td class="py-3">Lower fraction of cycles stalled on <strong>memory throttle</strong> or <strong>memory dependency</strong> (data not ready). More cycles in “issued” or “executing” when TMA hides latency.</td>
+                                </tr>
+                                <tr class="metric-row">
+                                    <td class="py-3 pr-4 font-medium">SM utilization</td>
+                                    <td class="py-3">Issue slot utilization (scheduler busy) can be higher; copy and compute overlap keeps warps active instead of waiting on loads.</td>
+                                </tr>
+                                <tr class="metric-row">
+                                    <td class="py-3 pr-4 font-medium">Instructions</td>
+                                    <td class="py-3">Presence of <strong>TMA / bulk-copy</strong> related SASS (e.g. <code class="bg-slate-700 px-1 rounded">CP_ASYNC_BULK_*</code>, or proxy instructions). Fewer generic LDG/STG for the same logical data movement.</td>
+                                </tr>
+                                <tr class="metric-row">
+                                    <td class="py-3 pr-4 font-medium">Occupancy</td>
+                                    <td class="py-3">TMA reduces register and thread usage for data movement (one thread can initiate a large copy), so kernels may sustain good occupancy with less register pressure.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Kernel names -->
+                <section id="kernel-names" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Kernel Names Where TMA Often Appears</h2>
+                    <p class="text-slate-400 mb-4">
+                        TMA is used in libraries and frameworks that target Hopper (H100, H200) and later. Typical kernel name patterns or sources:
+                    </p>
+                    <ul class="list-disc list-inside text-slate-400 space-y-2">
+                        <li><strong class="text-slate-300">CUTLASS 3.x / CuTe:</strong> GEMM and related kernels (e.g. <code class="bg-slate-700 px-1.5 py-0.5 rounded">gemm_*</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">cutlass_*</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">*_tma</code>). CUTLASS uses TMA for bulk tile loads/stores.</li>
+                        <li><strong class="text-slate-300">cuBLAS / cuBLASLt (Hopper):</strong> GEMM and batched GEMM kernels; names often include <code class="bg-slate-700 px-1.5 py-0.5 rounded">blas</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">gemm</code>, or internal identifiers. TMA is used in optimized GEMM paths.</li>
+                        <li><strong class="text-slate-300">FlashAttention / fused attention:</strong> Attention kernels that move large blocks of Q/K/V; names may include <code class="bg-slate-700 px-1.5 py-0.5 rounded">flash_attn</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">attention</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">fmha</code>.</li>
+                        <li><strong class="text-slate-300">Triton (experimental TMA):</strong> Autotuned kernels (often long hashed names) that enable TMA for certain ops (e.g. matmul, attention).</li>
+                        <li><strong class="text-slate-300">Custom Hopper kernels:</strong> Any kernel using <code class="bg-slate-700 px-1.5 py-0.5 rounded">cp.async.bulk.tensor</code> (PTX) or equivalent APIs (e.g. CuTe, libcudacxx TMA helpers) will show TMA in the SASS/NCU view.</li>
+                    </ul>
+                    <p class="text-slate-500 text-sm mt-4">
+                        Filter in NCU by kernel name to focus on GEMM, attention, or your custom kernels; then inspect the Source/SASS view and memory metrics for TMA usage.
+                    </p>
+                </section>
+
+                <!-- How to see TMA in NCU -->
+                <section id="ncu" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">How to See TMA in Nsight Compute (NCU)</h2>
+                    <ul class="text-slate-400 space-y-3 list-disc list-inside">
+                        <li><strong class="text-slate-300">Source / SASS view:</strong> Look for instructions related to bulk async copy (e.g. <code class="bg-slate-700 px-1.5 py-0.5 rounded">CP_ASYNC_BULK_TENSOR</code>, <code class="bg-slate-700 px-1.5 py-0.5 rounded">BULK_*</code>, or TMA descriptor setup). NCU’s Source page correlates high-level code with SASS; TMA shows up as few instructions initiating large transfers.</li>
+                        <li><strong class="text-slate-300">Memory section:</strong> Check “Memory Workload Analysis” and throughput metrics. Kernels using TMA often show high memory throughput with relatively fewer explicit load/store instructions in the listing.</li>
+                        <li><strong class="text-slate-300">Warp Stall Statistics:</strong> Compare “Memory Throttle” and “Memory Dependency” stall reasons. With TMA, these can be lower (more overlap); without TMA, memory-bound kernels often show high stalls here.</li>
+                        <li><strong class="text-slate-300">Roofline / speed-of-light:</strong> NCU’s roofline view shows achieved vs theoretical memory bandwidth. TMA can help get closer to the memory roofline when the kernel is memory-bound.</li>
+                        <li><strong class="text-slate-300">NVIDIA docs:</strong> For exact metric names and TMA-specific counters on your GPU (e.g. H100), check the latest <a href="https://docs.nvidia.com/nsight-compute/" class="text-blue-400 hover:underline" target="_blank" rel="noopener">Nsight Compute documentation</a> and the “Metrics Reference” for your architecture.</li>
+                    </ul>
+                </section>
+
+                <!-- Performance benefits -->
+                <section id="benefits" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Performance Benefits When TMA Is Present</h2>
+                    <ul class="text-slate-400 space-y-2 list-disc list-inside">
+                        <li><strong class="text-slate-300">Higher effective memory bandwidth:</strong> Bulk transfers reduce per-byte overhead and allow the memory system to run at higher utilization.</li>
+                        <li><strong class="text-slate-300">Copy–compute overlap:</strong> Warps do useful work while TMA moves data, reducing time spent stalled on memory.</li>
+                        <li><strong class="text-slate-300">Less register and thread pressure:</strong> One thread can initiate a large copy instead of many threads each doing small loads; frees registers and occupancy for compute.</li>
+                        <li><strong class="text-slate-300">Reported speedups:</strong> On Hopper, well-tuned GEMM kernels using TMA (e.g. CUTLASS 3 FP8) have shown on the order of <strong class="nv-green">1.4×–2.2×</strong> over non-TMA baselines (e.g. cuBLAS) for small-to-medium problem sizes, where memory and overlap matter most.</li>
+                        <li><strong class="text-slate-300">Multicast:</strong> TMA can multicast from global to shared memory of multiple SMs in a cluster, reducing total traffic and improving efficiency in producer–consumer patterns.</li>
+                    </ul>
+                </section>
+            </main>
+        </div>
+
+        <footer class="mt-12 pt-8 border-t border-slate-700 text-center text-sm text-slate-500">
+            <p>Part of the <a href="../index.html" class="text-blue-400 hover:underline">AI Performance Design Guide</a></p>
+            <p class="mt-2">Related: <a href="memory-hierarchy.html" class="text-blue-400 hover:underline">Memory Hierarchy</a> | <a href="../profiling/ncu_metrics.html" class="text-blue-400 hover:underline">NCU Metrics</a></p>
+        </footer>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#76B900',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#76B900',
+                lineColor: '#94a3b8',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#334155',
+                background: '#0f172a',
+                mainBkg: '#1e293b',
+                nodeBorder: '#334155',
+                clusterBkg: '#1e293b',
+                clusterBorder: '#334155',
+                defaultLinkColor: '#94a3b8',
+                nodeTextColor: '#e2e8f0'
+            }
+        });
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+    </script>
+</body>
+</html>
