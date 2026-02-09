@@ -67,8 +67,11 @@
                     <p class="text-slate-400 mb-4">
                         <strong class="text-white">Tensor Memory Accelerator (TMA)</strong> is a dedicated hardware unit on NVIDIA Hopper (and later) GPUs that performs <strong class="text-slate-300">asynchronous bulk copies</strong> between global memory (HBM) and shared memory. A single thread can initiate a large tensor transfer; the TMA unit performs the copy in the background while warps continue with compute or other work.
                     </p>
-                    <p class="text-slate-400">
+                    <p class="text-slate-400 mb-4">
                         Without TMA, warps move data using regular load/store instructions (or <code class="bg-slate-700 px-1.5 py-0.5 rounded">cp.async</code> on Ampere), tying up the SM’s memory pipeline and often stalling on memory latency. With TMA, bulk copies are offloaded to the TMA unit, improving overlap and effective bandwidth. PTX uses <code class="bg-slate-700 px-1.5 py-0.5 rounded">cp.async.bulk.tensor</code>; synchronization relies on <code class="bg-slate-700 px-1.5 py-0.5 rounded">mbarrier</code> and <code class="bg-slate-700 px-1.5 py-0.5 rounded">fence.proxy.async</code>.
+                    </p>
+                    <p class="text-slate-400">
+                        <strong class="nv-green">Register bypass:</strong> TMA moves data <strong class="text-slate-300">directly</strong> between global memory and shared memory—it does <strong class="text-slate-300">not</strong> use the register file as an intermediate. Older approaches required many threads and registers to hold data during loads/stores. TMA avoids that entirely for bulk transfers, which reduces register pressure and frees registers for compute.
                     </p>
                 </section>
 
@@ -137,8 +140,17 @@ flowchart TB
     style GM fill:#6366f1,stroke:#64748b
                     </div>
                     <p class="text-slate-500 text-sm mt-3">
-                        TMA unit handles bulk transfer; warps overlap copy with compute. Better utilization and higher effective memory throughput when copy and compute are balanced.
+                        TMA unit handles bulk transfer; warps overlap copy with compute. Data path is <strong class="text-slate-400">global ↔ L2 ↔ shared</strong> with <strong class="nv-green">no register file</strong> in between (register bypass). Better utilization and higher effective memory throughput when copy and compute are balanced.
                     </p>
+
+                    <div class="mt-6 p-4 bg-slate-800/60 rounded-lg border border-slate-600">
+                        <h3 class="text-sm font-semibold text-slate-300 mb-2">Clarifications</h3>
+                        <ul class="text-slate-400 text-sm space-y-2">
+                            <li><strong class="text-slate-300">Global = HBM:</strong> In GPU terms, “global memory” is device DRAM—on modern GPUs that’s <strong class="text-slate-300">HBM</strong> (High Bandwidth Memory / VRAM). So the TMA path is <strong>HBM ↔ L2 ↔ shared</strong>.</li>
+                            <li><strong class="text-slate-300">What we’re saving (L1 / registers):</strong> We’re <strong class="nv-green">not thrashing L1</strong> or the register file. Without TMA, many small loads go through the SM’s memory pipeline into L1 and registers, which can thrash L1 and burn registers. TMA does one bulk move directly into shared memory, bypassing registers and avoiding that thrashing pattern.</li>
+                            <li><strong class="text-slate-300">L2 is unchanged:</strong> Data still goes <strong>through L2</strong>. All the usual L2 performance issues remain: limited capacity, finite bandwidth, and cache misses (L2 miss → HBM latency). TMA doesn’t remove or bypass L2; it only changes how the copy is initiated (bulk, async) and avoids registers and the L1-thrashing load pattern.</li>
+                        </ul>
+                    </div>
                 </section>
 
                 <!-- Metrics & Statistics -->
@@ -217,7 +229,7 @@ flowchart TB
                     <ul class="text-slate-400 space-y-2 list-disc list-inside">
                         <li><strong class="text-slate-300">Higher effective memory bandwidth:</strong> Bulk transfers reduce per-byte overhead and allow the memory system to run at higher utilization.</li>
                         <li><strong class="text-slate-300">Copy–compute overlap:</strong> Warps do useful work while TMA moves data, reducing time spent stalled on memory.</li>
-                        <li><strong class="text-slate-300">Less register and thread pressure:</strong> One thread can initiate a large copy instead of many threads each doing small loads; frees registers and occupancy for compute.</li>
+                        <li><strong class="text-slate-300">Register bypass / less register pressure:</strong> TMA transfers data directly between global and shared memory without using registers. One thread can initiate a large copy instead of many threads each doing small loads through the register file; this frees registers and occupancy for compute.</li>
                         <li><strong class="text-slate-300">Reported speedups:</strong> On Hopper, well-tuned GEMM kernels using TMA (e.g. CUTLASS 3 FP8) have shown on the order of <strong class="nv-green">1.4×–2.2×</strong> over non-TMA baselines (e.g. cuBLAS) for small-to-medium problem sizes, where memory and overlap matter most.</li>
                         <li><strong class="text-slate-300">Multicast:</strong> TMA can multicast from global to shared memory of multiple SMs in a cluster, reducing total traffic and improving efficiency in producer–consumer patterns.</li>
                     </ul>
