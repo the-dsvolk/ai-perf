@@ -59,6 +59,8 @@ The smallest unit of execution. Each thread has:
 | **L1/L2 Cache** | Automatic | Fast | MB range |
 | **Global Memory (HBM)** | All threads | Slow | GBs |
 
+**→ For a detailed walk-through with sizes, latencies, and throughput:** [Life of a Memory Request: HBM to Register](memory_request_life.html) — how a load travels from HBM to a register, with a diagram and reference table.
+
 ---
 
 ## Registers: Clarification

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Design — ChatGPT</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- KaTeX for math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF7;
+            color: #3C3633;
+        }
+        .content-card {
+            background-color: #FFFFFF;
+            border: 1px solid #EAE6E1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        .section-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        .kv-row {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #F0ECE7;
+        }
+        .kv-row:last-child { border-bottom: none; }
+        .kv-label { font-weight: 600; color: #6B5E55; font-size: 0.875rem; }
+        .kv-value { color: #3C3633; font-size: 0.875rem; }
+        .highlight-box {
+            background: linear-gradient(135deg, #FFF8EE 0%, #FFF3E0 100%);
+            border-left: 4px solid #E0A75E;
+            padding: 1rem 1.25rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1rem 0;
+        }
+        .tier-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        nav a {
+            transition: all 0.2s ease-in-out;
+        }
+        nav a:hover, nav a.active {
+            color: #E0A75E;
+            background-color: rgba(224, 167, 94, 0.1);
+            transform: translateX(4px);
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div class="flex">
+        <!-- Sidebar Navigation -->
+        <nav class="hidden lg:flex flex-col fixed top-0 left-0 h-screen w-64 bg-white border-r border-gray-200 p-6 overflow-y-auto z-10">
+            <h2 class="text-lg font-bold text-gray-800 mb-6">System Design — ChatGPT</h2>
+            <div class="space-y-1">
+                <a href="#overview" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">Overview</a>
+                <a href="#system-flow" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">1. High-Level System Flow</a>
+                <a href="#gpu-fleet" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">2. The GPU Fleet</a>
+                <a href="#storage" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">3. Storage Architecture</a>
+                <a href="#reliability" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">4. Reliability & Fault Tolerance</a>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="flex-1 lg:ml-64 p-4 sm:p-8 max-w-5xl mx-auto">
+
+            <!-- Title -->
+            <header id="overview" class="mb-10">
+                <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">System Design — ChatGPT</h1>
+                <p class="text-gray-500 text-lg">End-to-end architecture for a large-scale, real-time AI chat service.</p>
+            </header>
+
+            <!-- Architecture Diagram -->
+            <section class="mb-12">
+                <div class="content-card rounded-xl overflow-hidden">
+                    <img src="chat_gpt.png" alt="ChatGPT system design architecture diagram" class="w-full h-auto" />
+                </div>
+            </section>
+
+            <!-- Section 1: High-Level System Flow -->
+            <section id="system-flow" class="mb-12">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="section-icon bg-blue-100 text-blue-600">1</div>
+                    <h2 class="text-2xl font-bold text-gray-900">High-Level System Flow</h2>
+                </div>
+                <p class="text-gray-600 mb-6">
+                    The system follows a <strong>hybrid REST and WebSocket architecture</strong> to handle the lifecycle of an AI chat session.
+                </p>
+
+                <div class="space-y-4">
+                    <!-- Ingress & Control Plane -->
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">Ingress &amp; Control Plane</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            Requests from the mobile app hit the <strong>API Gateway</strong>. This layer handles authentication and coordinates with the <strong>Rate Limiter</strong>, which fetches quota data from Redis (backed by Postgres) to ensure the user hasn't exceeded their tier limits.
+                        </p>
+                    </div>
+
+                    <!-- Session Management -->
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">Session Management</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            To prevent duplicate work and double-billing, the system uses <strong>Idempotency keys</strong>. Before processing a message, the Chat Server checks a unique <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">request_id</code> in Redis.
+                        </p>
+                    </div>
+
+                    <!-- The Data Plane (Streaming) -->
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">The Data Plane (Streaming)</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            For low-latency responses, a persistent <strong>WebSocket connection</strong> is established. This allows the AI to stream tokens incrementally, significantly improving the user's perceived performance.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 2: Compute — The GPU Fleet -->
+            <section id="gpu-fleet" class="mb-12">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="section-icon bg-green-100 text-green-600">2</div>
+                    <h2 class="text-2xl font-bold text-gray-900">Compute: The GPU Fleet</h2>
+                </div>
+                <p class="text-gray-600 mb-6">
+                    The requirement for <strong>1,000 NVIDIA B200 GPUs</strong> is derived from <strong>Little's Law</strong> ($L = \lambda W$):
+                </p>
+
+                <!-- Little's Law Breakdown -->
+                <div class="content-card rounded-xl p-5 mb-6">
+                    <h3 class="font-semibold text-gray-800 mb-4">Capacity Planning via Little's Law</h3>
+                    <div class="space-y-1">
+                        <div class="kv-row">
+                            <div class="kv-label">Arrival Rate ($\lambda$)</div>
+                            <div class="kv-value">10,000 Requests Per Second</div>
+                        </div>
+                        <div class="kv-row">
+                            <div class="kv-label">Wait Time ($W$)</div>
+                            <div class="kv-value">10-second average response duration</div>
+                        </div>
+                        <div class="kv-row">
+                            <div class="kv-label">Concurrency ($L$)</div>
+                            <div class="kv-value">100,000 active concurrent streams</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hardware Optimizations -->
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Hardware Optimizations</h3>
+                <div class="space-y-4">
+                    <div class="content-card rounded-xl p-5">
+                        <h4 class="font-semibold text-gray-800 mb-2">First-Principle Memory Scaling</h4>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            A Llama-3 70B model in FP8 takes <strong>70 GB</strong> for weights, leaving ~110 GB for the KV Cache. Using <strong>PagedAttention</strong>, each token consumes ~1 MB (conservative estimate), allowing for <strong>100 concurrent users per GPU</strong>.
+                        </p>
+                        <div class="highlight-box mt-3 text-sm">
+                            <strong>Key insight:</strong> 180 GB total VRAM − 70 GB weights = 110 GB for KV Cache → ~100 concurrent streams per GPU → 1,000 GPUs needed for 100K concurrent streams.
+                        </div>
+                    </div>
+
+                    <div class="content-card rounded-xl p-5">
+                        <h4 class="font-semibold text-gray-800 mb-2">Prefix Caching</h4>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            To minimize redundant math, the Model Workers use <strong>Prefix Caching</strong>. By using <strong>Consistent Hashing</strong> (by <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">chat_id</code>) at the Load Balancer, a user's messages always land on the same worker, maximizing KV Cache hits and reducing <strong>Time to First Token (TTFT)</strong>.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 3: Storage Architecture -->
+            <section id="storage" class="mb-12">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="section-icon bg-purple-100 text-purple-600">3</div>
+                    <h2 class="text-2xl font-bold text-gray-900">Storage Architecture</h2>
+                </div>
+                <p class="text-gray-600 mb-6">
+                    A <strong>multi-tiered storage strategy</strong> handles a projected <strong>10 PB</strong> of data over 5 years.
+                </p>
+
+                <div class="space-y-4">
+                    <!-- Postgres -->
+                    <div class="content-card rounded-xl p-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="tier-badge bg-blue-100 text-blue-700">Source of Truth</span>
+                            <h3 class="font-semibold text-gray-800">Postgres</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            Stores relational data like user profiles and billing tiers. To handle <strong>100M users</strong>, it is sharded by <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">user_id</code> and utilizes <strong>Primary-Replica</strong> sets for high availability and read scaling.
+                        </p>
+                    </div>
+
+                    <!-- DynamoDB -->
+                    <div class="content-card rounded-xl p-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="tier-badge bg-orange-100 text-orange-700">Hot Store</span>
+                            <h3 class="font-semibold text-gray-800">DynamoDB</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            Stores the actual message history. Chosen for its horizontal scalability. Estimated <strong>10 PB</strong> of total storage, which translates to roughly <strong>300 physical machines</strong> (accounting for 3x replication).
+                        </p>
+                    </div>
+
+                    <!-- S3 -->
+                    <div class="content-card rounded-xl p-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="tier-badge bg-gray-100 text-gray-700">Cold Store</span>
+                            <h3 class="font-semibold text-gray-800">S3</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            To manage costs, history older than <strong>1 year</strong> is offloaded from DynamoDB to S3 Blob Storage.
+                        </p>
+                    </div>
+
+                    <!-- Redis -->
+                    <div class="content-card rounded-xl p-5">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="tier-badge bg-red-100 text-red-700">Speed Layer</span>
+                            <h3 class="font-semibold text-gray-800">Redis</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            Tracks active session IDs, idempotency keys, and temporary token quotas.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 4: Reliability and Fault Tolerance -->
+            <section id="reliability" class="mb-12">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="section-icon bg-red-100 text-red-600">4</div>
+                    <h2 class="text-2xl font-bold text-gray-900">Reliability and Fault Tolerance</h2>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">Self-Healing DBs</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            If a Postgres Primary fails, an automated <strong>Failover</strong> promotes a replica to primary.
+                        </p>
+                    </div>
+
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">Blast Radius Reduction</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            Sharding ensures that a failure in one database partition only affects a <strong>small subset of users</strong>.
+                        </p>
+                    </div>
+
+                    <div class="content-card rounded-xl p-5">
+                        <h3 class="font-semibold text-gray-800 mb-2">Stateless Retries</h3>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            If a Model Worker node fails, the Consistent Hashing simply remaps the <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">chat_id</code> to a new healthy node. The first request is a "cache miss," but the system remains operational.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Sidebar scroll-spy -->
+    <script>
+        const sections = document.querySelectorAll('section[id], header[id]');
+        const navLinks = document.querySelectorAll('nav a');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    navLinks.forEach(link => link.classList.remove('active'));
+                    const active = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-20% 0px -70% 0px' });
+        sections.forEach(s => observer.observe(s));
+    </script>
+
+</body>
+</html>

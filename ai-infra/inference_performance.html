@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Inference Performance: Bottleneck Analysis</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF7;
+            color: #3C3633;
+        }
+        .content-card {
+            background-color: #FFFFFF;
+            border: 1px solid #EAE6E1;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+        }
+        .section-icon {
+            width: 40px; height: 40px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.25rem; flex-shrink: 0;
+        }
+        .highlight-box {
+            background: linear-gradient(135deg, #FFF8EE 0%, #FFF3E0 100%);
+            border-left: 4px solid #E0A75E;
+            padding: 1rem 1.25rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1rem 0;
+        }
+        nav a {
+            transition: all 0.2s ease-in-out;
+        }
+        nav a:hover, nav a.active {
+            color: #E0A75E;
+            background-color: rgba(224, 167, 94, 0.1);
+            transform: translateX(4px);
+        }
+        table { border-collapse: collapse; width: 100%; }
+        th { background: #F5F0EB; color: #5C5450; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        th, td { padding: 10px 14px; text-align: right; border-bottom: 1px solid #EAE6E1; font-size: 0.875rem; }
+        td:first-child, th:first-child { text-align: left; }
+        tr:hover td { background: #FEFCF8; }
+        .gpu-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 9999px;
+            font-size: 0.7rem; font-weight: 600;
+        }
+        .gpu-b200 { background: #E8F5E9; color: #2E7D32; }
+        .gpu-h100 { background: #F3E5F5; color: #6A1B9A; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex">
+    <!-- Sidebar -->
+    <nav class="hidden lg:flex flex-col fixed top-0 left-0 h-screen w-64 bg-white border-r border-gray-200 p-6 overflow-y-auto z-10">
+        <h2 class="text-lg font-bold text-gray-800 mb-6">Inference Performance</h2>
+        <div class="space-y-1">
+            <a href="#overview" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">Overview</a>
+            <a href="#bottleneck" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">Bottleneck Analysis</a>
+            <a href="#data" class="block px-3 py-2 rounded-lg text-sm text-gray-600 font-medium">Raw NVIDIA Data</a>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="flex-1 lg:ml-64 p-4 sm:p-8 max-w-5xl mx-auto">
+
+        <!-- Title -->
+        <header id="overview" class="mb-10">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">LLM Inference Performance</h1>
+            <p class="text-gray-500 text-lg mb-4">Compute vs Memory Bottleneck Analysis for Llama 3.3 70B</p>
+            <p class="text-gray-600 text-sm leading-relaxed">
+                LLM inference has two distinct phases — <strong>prefill</strong> (compute-bound, processes all input tokens in parallel) and <strong>decode</strong> (memory-bandwidth-bound, generates output tokens one at a time). The balance between input and output length determines which phase dominates and where the bottleneck lies. This page visualizes the bottleneck regimes for NVIDIA B200 running Llama 3.3 70B, using data from
+                <a href="https://developer.nvidia.com/deep-learning-performance-training-inference/ai-inference" target="_blank" class="text-blue-600 underline">NVIDIA's published benchmarks</a>.
+            </p>
+        </header>
+
+        <!-- Bottleneck Analysis -->
+        <section id="bottleneck" class="mb-12">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="section-icon bg-red-100 text-red-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">Bottleneck Analysis — B200</h2>
+            </div>
+            <p class="text-gray-600 text-sm leading-relaxed mb-6">
+                How does the balance between input tokens (prefill) and output tokens (decode) shape throughput? The charts below reveal two distinct bottleneck regimes on a single B200 GPU running Llama 3.3 70B.
+            </p>
+
+            <!-- Chart 1: Throughput Landscape -->
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Throughput Landscape</h3>
+            <div class="content-card rounded-xl p-4 mb-6">
+                <div id="landscape-chart" style="width:100%; height:520px;"></div>
+            </div>
+
+            <!-- Chart 2: Bottleneck Transition -->
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Bottleneck Transition</h3>
+            <div class="content-card rounded-xl p-4 mb-6">
+                <div id="bottleneck-chart" style="width:100%; height:480px;"></div>
+            </div>
+
+            <!-- Key Insight Box -->
+            <div class="content-card rounded-xl p-5 space-y-3">
+                <h3 class="font-semibold text-gray-800">Key Takeaway: Two Bottleneck Regimes</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                        <div class="font-semibold text-orange-800 text-sm mb-1">Compute-Bound (Prefill-Heavy)</div>
+                        <p class="text-xs text-gray-600 leading-relaxed">
+                            When input tokens dominate (e.g., 2k/128, 5k/500, 20k/2k), the <strong>prefill phase</strong> processes all input tokens in parallel via large GEMMs. The GPU's tensor cores are the bottleneck. Throughput drops sharply — the GPU is doing heavy math, not waiting on memory.
+                        </p>
+                    </div>
+                    <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                        <div class="font-semibold text-blue-800 text-sm mb-1">Memory-BW Bound (Decode-Heavy)</div>
+                        <p class="text-xs text-gray-600 leading-relaxed">
+                            When output tokens dominate (e.g., 128/2k, 128/4k), the <strong>decode phase</strong> generates tokens one at a time, loading the full model weights per step. Memory bandwidth is the bottleneck — but batching amortizes the weight load, so throughput is higher.
+                        </p>
+                    </div>
+                </div>
+                <div class="highlight-box text-sm">
+                    <strong>Memory capacity also matters:</strong> Very long total sequences (e.g., 128/4k vs 128/2k) reduce throughput even within the decode-heavy regime, because the larger KV cache limits how many requests can run concurrently (smaller batch = less amortization).
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Table -->
+        <section id="data" class="mb-12">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="section-icon bg-blue-100 text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/><path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/><path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">NVIDIA Published Data — Llama 3.3 70B</h2>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">
+                Source: <a href="https://developer.nvidia.com/deep-learning-performance-training-inference/ai-inference" target="_blank" class="text-blue-600 underline">NVIDIA Deep Learning Performance</a> — Max Throughput scenario.
+            </p>
+
+            <!-- B200 Table -->
+            <div class="content-card rounded-xl overflow-hidden mb-6">
+                <div class="px-4 py-3 bg-green-50 border-b border-green-100">
+                    <span class="font-semibold text-sm text-green-800">B200</span>
+                    <span class="text-xs text-green-600 ml-2">1x B200 &middot; PP=1 TP=1 &middot; FP4 &middot; TensorRT-LLM 1.0</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Input</th><th>Output</th><th>Throughput (tok/s)</th><th>Throughput / GPU</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>128</td><td>2,048</td><td>9,922</td><td><strong>9,922</strong></td></tr>
+                            <tr><td>128</td><td>4,096</td><td>6,831</td><td><strong>6,831</strong></td></tr>
+                            <tr><td>500</td><td>2,000</td><td>7,762</td><td><strong>7,762</strong></td></tr>
+                            <tr><td>1,000</td><td>1,000</td><td>7,007</td><td><strong>7,007</strong></td></tr>
+                            <tr><td>1,000</td><td>2,000</td><td>6,737</td><td><strong>6,737</strong></td></tr>
+                            <tr><td>2,048</td><td>128</td><td>1,339</td><td><strong>1,339</strong></td></tr>
+                            <tr><td>2,048</td><td>2,048</td><td>4,783</td><td><strong>4,783</strong></td></tr>
+                            <tr><td>5,000</td><td>500</td><td>1,459</td><td><strong>1,459</strong></td></tr>
+                            <tr><td>20,000</td><td>2,000</td><td>665</td><td><strong>665</strong></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- H100 Table -->
+            <div class="content-card rounded-xl overflow-hidden">
+                <div class="px-4 py-3 bg-purple-50 border-b border-purple-100">
+                    <span class="font-semibold text-sm text-purple-800">H100 SXM5</span>
+                    <span class="text-xs text-purple-600 ml-2">2x H100 &middot; PP=1 TP=2 &middot; FP8 &middot; TensorRT-LLM 1.0</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Input</th><th>Output</th><th>Throughput (tok/s)</th><th>Throughput / GPU</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>128</td><td>2,048</td><td>6,651</td><td><strong>3,326</strong></td></tr>
+                            <tr><td>128</td><td>4,096</td><td>4,199</td><td><strong>2,100</strong></td></tr>
+                            <tr><td>500</td><td>2,000</td><td>5,222</td><td><strong>2,611</strong></td></tr>
+                            <tr><td>1,000</td><td>1,000</td><td>4,205</td><td><strong>2,103</strong></td></tr>
+                            <tr><td>1,000</td><td>2,000</td><td>4,146</td><td><strong>2,073</strong></td></tr>
+                            <tr><td>2,048</td><td>128</td><td>762</td><td><strong>381</strong></td></tr>
+                            <tr><td>2,048</td><td>2,048</td><td>3,082</td><td><strong>1,541</strong></td></tr>
+                            <tr><td>5,000</td><td>500</td><td>898</td><td><strong>449</strong></td></tr>
+                            <tr><td>20,000</td><td>2,000</td><td>437</td><td><strong>219</strong></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<script>
+// ============================================================
+// NVIDIA published data for Llama 3.3 70B
+// ============================================================
+const NVIDIA_DATA = {
+    b200: {
+        label: 'B200', pp: 1, tp: 1, numGpus: 1, precision: 'FP4',
+        modelSizeGB: 35,           // 70B * 0.5 bytes (FP4)
+        kvBytesPerToken: 163840,   // 2 * 80 layers * 8 kv_heads * 128 dim * 1 byte (FP8) = 160 KB
+        availKvGB: 147,            // 192 - 35 (model) - 10 (overhead)
+        configs: [
+            { input: 128,   output: 2048, throughput: 9922 },
+            { input: 128,   output: 4096, throughput: 6831 },
+            { input: 500,   output: 2000, throughput: 7762 },
+            { input: 1000,  output: 1000, throughput: 7007 },
+            { input: 1000,  output: 2000, throughput: 6737 },
+            { input: 2048,  output: 128,  throughput: 1339 },
+            { input: 2048,  output: 2048, throughput: 4783 },
+            { input: 5000,  output: 500,  throughput: 1459 },
+            { input: 20000, output: 2000, throughput: 665  },
+        ]
+    }
+};
+
+// ============================================================
+// Bottleneck Analysis Charts
+// ============================================================
+(function renderBottleneckCharts() {
+    const data = NVIDIA_DATA.b200.configs.map(c => ({
+        input: c.input,
+        output: c.output,
+        throughput: c.throughput,
+        total: c.input + c.output,
+        prefillRatio: c.input / (c.input + c.output),
+        label: `${c.input >= 1000 ? (c.input/1000)+'k' : c.input} / ${c.output >= 1000 ? (c.output/1000)+'k' : c.output}`,
+    }));
+
+    // --- Chart 1: Throughput Landscape (Bubble) ---
+    const maxThru = Math.max(...data.map(d => d.throughput));
+    const minThru = Math.min(...data.map(d => d.throughput));
+
+    // Normalize throughput to 0-1 for color scale
+    const colorVals = data.map(d => d.throughput);
+
+    // Bubble size: scale throughput to reasonable marker sizes (20-55)
+    const sizes = data.map(d => 20 + 35 * (d.throughput - minThru) / (maxThru - minThru));
+
+    const landscapeTrace = {
+        x: data.map(d => d.input),
+        y: data.map(d => d.output),
+        mode: 'markers+text',
+        text: data.map(d => d.throughput.toLocaleString()),
+        textposition: data.map(d => {
+            if (d.input >= 5000) return 'top center';
+            if (d.output <= 500) return 'top center';
+            return 'bottom center';
+        }),
+        textfont: { size: 10, color: '#5C5450', family: 'Inter, sans-serif' },
+        marker: {
+            size: sizes,
+            color: colorVals,
+            colorscale: [
+                [0, '#d32f2f'],
+                [0.25, '#f57c00'],
+                [0.5, '#fbc02d'],
+                [0.75, '#7cb342'],
+                [1, '#2e7d32'],
+            ],
+            colorbar: {
+                title: { text: 'Throughput<br>(tok/s/GPU)', font: { size: 11 } },
+                thickness: 14,
+                len: 0.6,
+                tickfont: { size: 10 },
+            },
+            line: { color: '#fff', width: 1.5 },
+        },
+        hovertemplate: data.map(d =>
+            `<b>${d.label}</b><br>` +
+            `Input: ${d.input.toLocaleString()} tokens<br>` +
+            `Output: ${d.output.toLocaleString()} tokens<br>` +
+            `Throughput/GPU: <b>${d.throughput.toLocaleString()}</b> tok/s<br>` +
+            `Prefill fraction: ${(d.prefillRatio * 100).toFixed(1)}%<extra></extra>`
+        ),
+        showlegend: false,
+    };
+
+    const landscapeLayout = {
+        title: {
+            text: '<b>Throughput Landscape</b><br><span style="font-size:13px;color:#888">B200 &middot; Llama 3.3 70B &middot; FP4 &middot; Bubble size + color = throughput</span>',
+            font: { family: 'Inter, sans-serif', size: 16 },
+        },
+        xaxis: {
+            title: { text: 'Input Tokens', font: { size: 13 } },
+            type: 'log',
+            gridcolor: '#E8E4DF', griddash: 'dot',
+            zeroline: false,
+        },
+        yaxis: {
+            title: { text: 'Output Tokens', font: { size: 13 } },
+            type: 'log',
+            gridcolor: '#E8E4DF', griddash: 'dot',
+            zeroline: false,
+        },
+        shapes: [
+            // Diagonal line: input = output
+            {
+                type: 'line',
+                x0: 100, y0: 100, x1: 25000, y1: 25000,
+                line: { color: '#B0A89F', width: 1.5, dash: 'dash' },
+            },
+        ],
+        annotations: [
+            {
+                x: Math.log10(300), y: Math.log10(3500),
+                text: '<b>Decode-heavy</b><br>Memory-BW bound',
+                showarrow: false,
+                font: { size: 11, color: '#1565C0' },
+                bgcolor: 'rgba(227,242,253,0.8)',
+                borderpad: 6,
+                bordercolor: '#90CAF9',
+                borderwidth: 1,
+            },
+            {
+                x: Math.log10(8000), y: Math.log10(300),
+                text: '<b>Prefill-heavy</b><br>Compute bound',
+                showarrow: false,
+                font: { size: 11, color: '#C62828' },
+                bgcolor: 'rgba(255,235,238,0.8)',
+                borderpad: 6,
+                bordercolor: '#EF9A9A',
+                borderwidth: 1,
+            },
+        ],
+        plot_bgcolor: '#FDFBF7',
+        paper_bgcolor: '#FDFBF7',
+        margin: { l: 70, r: 100, t: 80, b: 60 },
+        hovermode: 'closest',
+    };
+
+    Plotly.newPlot('landscape-chart', [landscapeTrace], landscapeLayout, {
+        responsive: true, displayModeBar: true,
+        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+    });
+
+    // --- Chart 2: Bottleneck Transition (Scatter) ---
+    // Sort by prefill ratio for nicer display
+    const sorted = [...data].sort((a, b) => a.prefillRatio - b.prefillRatio);
+
+    // Bubble size: total sequence length (normalized to 12-40 range)
+    const maxTotal = Math.max(...sorted.map(d => d.total));
+    const minTotal = Math.min(...sorted.map(d => d.total));
+    const bnSizes = sorted.map(d => 12 + 28 * (d.total - minTotal) / (maxTotal - minTotal));
+
+    // Color by bottleneck type
+    const bnColors = sorted.map(d => {
+        if (d.prefillRatio < 0.3) return '#1565C0';       // memory-BW bound
+        if (d.prefillRatio > 0.7) return '#C62828';       // compute bound
+        return '#F57C00';                                   // balanced
+    });
+
+    const bottleneckTrace = {
+        x: sorted.map(d => Math.round(d.prefillRatio * 1000) / 1000),
+        y: sorted.map(d => d.throughput),
+        mode: 'markers+text',
+        text: sorted.map(d => d.label),
+        textposition: sorted.map((d, i) => {
+            // Avoid text overlap
+            if (d.prefillRatio > 0.9 && d.throughput < 1000) return 'top right';
+            if (d.prefillRatio > 0.9) return 'top left';
+            if (d.throughput > 9000) return 'bottom center';
+            if (i > 0 && Math.abs(sorted[i-1].prefillRatio - d.prefillRatio) < 0.05) return 'top center';
+            return 'right';
+        }),
+        textfont: { size: 10, color: '#5C5450', family: 'Inter, sans-serif' },
+        marker: {
+            size: bnSizes,
+            color: bnColors,
+            line: { color: '#fff', width: 1.5 },
+        },
+        hovertemplate: sorted.map(d =>
+            `<b>${d.label}</b><br>` +
+            `Prefill fraction: ${(d.prefillRatio * 100).toFixed(1)}%<br>` +
+            `Throughput/GPU: <b>${d.throughput.toLocaleString()}</b> tok/s<br>` +
+            `Total seq length: ${d.total.toLocaleString()} tokens<br>` +
+            `Bottleneck: ${d.prefillRatio < 0.3 ? 'Memory-BW' : d.prefillRatio > 0.7 ? 'Compute' : 'Balanced'}<extra></extra>`
+        ),
+        showlegend: false,
+    };
+
+    const bottleneckLayout = {
+        title: {
+            text: '<b>Bottleneck Transition</b><br><span style="font-size:13px;color:#888">B200 &middot; Llama 3.3 70B &middot; FP4 &middot; Bubble size = total sequence length</span>',
+            font: { family: 'Inter, sans-serif', size: 16 },
+        },
+        xaxis: {
+            title: { text: 'Prefill Fraction  (input / total tokens)', font: { size: 13 } },
+            range: [-0.05, 1.05],
+            gridcolor: '#E8E4DF', griddash: 'dot',
+            zeroline: false,
+            tickformat: '.0%',
+        },
+        yaxis: {
+            title: { text: 'Throughput per GPU (tokens/sec/GPU)', font: { size: 13 } },
+            gridcolor: '#E8E4DF', griddash: 'dot',
+            zeroline: false, rangemode: 'tozero',
+        },
+        shapes: [
+            // Memory-BW bound zone (left)
+            {
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: -0.05, x1: 0.3, y0: 0, y1: 1,
+                fillcolor: 'rgba(21,101,192,0.06)',
+                line: { width: 0 },
+                layer: 'below',
+            },
+            // Balanced zone (center)
+            {
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: 0.3, x1: 0.7, y0: 0, y1: 1,
+                fillcolor: 'rgba(245,124,0,0.06)',
+                line: { width: 0 },
+                layer: 'below',
+            },
+            // Compute-bound zone (right)
+            {
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: 0.7, x1: 1.05, y0: 0, y1: 1,
+                fillcolor: 'rgba(198,40,40,0.06)',
+                line: { width: 0 },
+                layer: 'below',
+            },
+        ],
+        annotations: [
+            {
+                x: 0.15, y: 1.0, xref: 'x', yref: 'paper',
+                text: '<b>Memory-BW Bound</b>',
+                showarrow: false,
+                font: { size: 11, color: '#1565C0' },
+                yanchor: 'top',
+            },
+            {
+                x: 0.5, y: 1.0, xref: 'x', yref: 'paper',
+                text: '<b>Balanced</b>',
+                showarrow: false,
+                font: { size: 11, color: '#E65100' },
+                yanchor: 'top',
+            },
+            {
+                x: 0.875, y: 1.0, xref: 'x', yref: 'paper',
+                text: '<b>Compute Bound</b>',
+                showarrow: false,
+                font: { size: 11, color: '#C62828' },
+                yanchor: 'top',
+            },
+        ],
+        plot_bgcolor: '#FDFBF7',
+        paper_bgcolor: '#FDFBF7',
+        margin: { l: 70, r: 30, t: 80, b: 60 },
+        hovermode: 'closest',
+    };
+
+    Plotly.newPlot('bottleneck-chart', [bottleneckTrace], bottleneckLayout, {
+        responsive: true, displayModeBar: true,
+        modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+    });
+})();
+
+// Sidebar scroll-spy
+const sections = document.querySelectorAll('section[id], header[id]');
+const navLinks = document.querySelectorAll('nav a');
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            navLinks.forEach(link => link.classList.remove('active'));
+            const active = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+            if (active) active.classList.add('active');
+        }
+    });
+}, { rootMargin: '-20% 0px -70% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

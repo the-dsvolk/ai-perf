@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roofline Model (Speed of Light Diagram)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .nv-green { color: #76B900; }
+        .card {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .mermaid { background-color: transparent !important; }
+        .mermaid svg { max-width: 100%; }
+        .toc-link { border-left: 2px solid transparent; transition: all 0.2s ease; }
+        .toc-link:hover { border-left-color: #76B900; background: rgba(118, 185, 0, 0.1); }
+        .sol-bar { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; font-size: 0.875rem; }
+        .sol-bar .label { min-width: 5.5rem; color: #94a3b8; }
+        .sol-bar .bar { flex: 1; max-width: 12rem; height: 1rem; background: #334155; border-radius: 0.25rem; overflow: hidden; }
+        .sol-bar .fill { height: 100%; border-radius: 0.25rem; }
+        .sol-bar .pct { min-width: 3.5rem; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+        /* Roofline SVG chart */
+        .roofline-grid-line { stroke: #334155; stroke-width: 1; stroke-dasharray: 4; }
+        .roofline-axis { stroke: #94a3b8; stroke-width: 2; }
+        .roofline-slope { stroke: #fbbf24; stroke-width: 4; stroke-linecap: round; }
+        .roofline-ceiling { stroke: #22d3ee; stroke-width: 4; stroke-linecap: round; }
+        .roofline-ridge { fill: #76B900; filter: drop-shadow(0 0 8px #76B900); }
+        .roofline-kernel-dot { r: 6; transition: all 0.3s ease; cursor: pointer; }
+        .roofline-svg { width: 100%; height: auto; min-height: 400px; }
+        @media (min-width: 768px) { .roofline-svg { min-height: 520px; } }
+    </style>
+</head>
+<body class="min-h-screen antialiased">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+        <header class="mb-12">
+            <h1 class="text-4xl font-bold mb-4">
+                Roofline Model <span class="nv-green">(Speed of Light Diagram)</span>
+            </h1>
+            <p class="text-xl text-slate-400">
+                SOL analysis, roofline ceiling, and how to use both in an NVIDIA-style performance interview.
+            </p>
+            <div class="mt-4 text-sm text-slate-500">
+                Related: <a href="memory-hierarchy.html" class="text-blue-400 hover:underline">GPU Memory Hierarchy</a> |
+                <a href="../profiling/ncu_metrics.html" class="text-blue-400 hover:underline">NCU Speed of Light</a> |
+                <a href="../profiling/gpu_bottlenecks.html" class="text-blue-400 hover:underline">GPU Bottlenecks</a>
+            </div>
+        </header>
+
+        <div class="grid lg:grid-cols-4 gap-8">
+            <aside class="lg:col-span-1">
+                <nav class="sticky top-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+                    <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Contents</h2>
+                    <ul class="space-y-1 text-sm">
+                        <li><a href="#sol" class="toc-link block py-1.5 px-3 rounded text-slate-300">SOL Analysis: Three Kernels</a></li>
+                        <li><a href="#roofline-diagram" class="toc-link block py-1.5 px-3 rounded text-slate-300">Roofline Model &amp; Graph</a></li>
+                        <li><a href="#two-roofs" class="toc-link block py-1.5 px-3 rounded text-slate-300">Two Roofs &amp; Ridge Point</a></li>
+                        <li><a href="#subsystems" class="toc-link block py-1.5 px-3 rounded text-slate-300">Subsystems &amp; NCU</a></li>
+                        <li><a href="#caveats" class="toc-link block py-1.5 px-3 rounded text-slate-300">Caveats &amp; Origin</a></li>
+                        <li><a href="#context" class="toc-link block py-1.5 px-3 rounded text-slate-300">Why Roofline: Historical Context</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <main class="lg:col-span-3 space-y-10">
+                <section id="sol" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Speed of Light (SOL) Analysis: Visual Example</h2>
+                    <p class="text-slate-400 mb-6">
+                        Conceptual representation of how <strong class="text-white">NVIDIA Nsight Compute</strong> displays SOL metrics for three kernel types. Each shows <strong class="text-slate-300">SM SOL</strong> (compute ceiling) and <strong class="text-slate-300">Memory SOL</strong> (bandwidth ceiling).
+                    </p>
+
+                    <div class="grid gap-6 md:grid-cols-3">
+                        <div class="rounded-lg border border-slate-600 bg-slate-800/40 p-4">
+                            <h3 class="text-lg font-semibold text-emerald-400 mb-3">1. Compute-Bound</h3>
+                            <p class="text-xs text-slate-500 mb-3">e.g. Large Matrix Multiply</p>
+                            <div class="sol-bar">
+                                <span class="label">SM SOL:</span>
+                                <span class="bar"><span class="fill bg-emerald-500" style="width:92.4%"></span></span>
+                                <span class="pct">92.4%</span>
+                            </div>
+                            <div class="sol-bar">
+                                <span class="label">Memory SOL:</span>
+                                <span class="bar"><span class="fill bg-sky-500" style="width:18.2%"></span></span>
+                                <span class="pct">18.2%</span>
+                            </div>
+                            <p class="text-slate-400 text-sm mt-3"><strong class="text-slate-300">Observation:</strong> SM is almost at theoretical peak.</p>
+                            <p class="text-slate-500 text-xs mt-2 italic">Interview: “Math-saturated. Check Tensor Cores or FP8/BF16 to raise the ceiling.”</p>
+                        </div>
+                        <div class="rounded-lg border border-slate-600 bg-slate-800/40 p-4">
+                            <h3 class="text-lg font-semibold text-sky-400 mb-3">2. Memory-Bound</h3>
+                            <p class="text-xs text-slate-500 mb-3">e.g. Element-wise Addition</p>
+                            <div class="sol-bar">
+                                <span class="label">SM SOL:</span>
+                                <span class="bar"><span class="fill bg-emerald-500" style="width:12.1%"></span></span>
+                                <span class="pct">12.1%</span>
+                            </div>
+                            <div class="sol-bar">
+                                <span class="label">Memory SOL:</span>
+                                <span class="bar"><span class="fill bg-sky-500" style="width:88.7%"></span></span>
+                                <span class="pct">88.7%</span>
+                            </div>
+                            <p class="text-slate-400 text-sm mt-3"><strong class="text-slate-300">Observation:</strong> Math units starving; memory bus full.</p>
+                            <p class="text-slate-500 text-xs mt-2 italic">Interview: “HBM-limited. Try kernel fusion or fix non-coalesced access.”</p>
+                        </div>
+                        <div class="rounded-lg border border-slate-600 bg-slate-800/40 p-4">
+                            <h3 class="text-lg font-semibold text-amber-400 mb-3">3. Latency / Under-utilized</h3>
+                            <p class="text-xs text-slate-500 mb-3">e.g. Small Grid or High Sync</p>
+                            <div class="sol-bar">
+                                <span class="label">SM SOL:</span>
+                                <span class="bar"><span class="fill bg-emerald-500" style="width:22.5%"></span></span>
+                                <span class="pct">22.5%</span>
+                            </div>
+                            <div class="sol-bar">
+                                <span class="label">Memory SOL:</span>
+                                <span class="bar"><span class="fill bg-sky-500" style="width:15.8%"></span></span>
+                                <span class="pct">15.8%</span>
+                            </div>
+                            <p class="text-slate-400 text-sm mt-3"><strong class="text-slate-300">Observation:</strong> Both lights low; hardware mostly idling.</p>
+                            <p class="text-slate-500 text-xs mt-2 italic">Interview: “Dead zone. Look at occupancy, global sync, tail effects.”</p>
+                        </div>
+                    </div>
+
+                    <p class="text-slate-500 text-sm mt-4">The same three cases in Mermaid (summary flow):</p>
+                    <div class="mermaid mt-2">
+flowchart LR
+    subgraph K1["1. Compute-Bound"]
+        A1["SM SOL 92.4%"]
+        A2["Mem SOL 18.2%"]
+        A1 --- A2
+    end
+    subgraph K2["2. Memory-Bound"]
+        B1["SM SOL 12.1%"]
+        B2["Mem SOL 88.7%"]
+        B1 --- B2
+    end
+    subgraph K3["3. Latency"]
+        C1["SM SOL 22.5%"]
+        C2["Mem SOL 15.8%"]
+        C1 --- C2
+    end
+    K1 --- K2 --- K3
+    style K1 fill:#1e3a2e,stroke:#22c55e,color:#e2e8f0
+    style K2 fill:#1e2a3e,stroke:#3b82f6,color:#e2e8f0
+    style K3 fill:#3e2a1e,stroke:#f59e0b,color:#e2e8f0
+                    </div>
+                </section>
+
+                <section id="roofline-diagram" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">The Roofline Model: A Deep Dive</h2>
+                    <p class="text-slate-400 mb-4">
+                        The <strong class="text-white">roofline model</strong> is a simplified, visual model of performance used to quickly determine whether a program is bound by <strong class="text-sky-400">memory bandwidth</strong> or <strong class="text-emerald-400">arithmetic bandwidth</strong>. Two hardware-derived “roofs” put a ceiling on possible performance: the <strong>compute roof</strong> (peak rate of CUDA Cores or Tensor Cores = arithmetic bandwidth) and the <strong>memory roof</strong> (peak memory throughput = memory bandwidth). See <a href="https://modal.com/gpu-glossary/perf/roofline-model" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">Modal GPU Glossary: Roofline Model</a>.
+                    </p>
+                    <p class="text-slate-400 mb-6">
+                        The model is drawn on a plane with <strong>arithmetic intensity</strong> (operations per byte) on the x-axis and <strong>performance</strong> (operations per second) on the y-axis. The compute roof is a horizontal line at the arithmetic bandwidth; the memory roof is a slanted line whose <strong>slope</strong> equals the memory bandwidth (rise over run = ops/sec ÷ ops/byte = bytes/sec).
+                    </p>
+
+                    <div class="flex flex-col gap-6">
+                        <div class="bg-slate-800/50 p-6 rounded-xl border border-slate-700 min-h-[420px] md:min-h-[520px]">
+                            <svg viewBox="0 0 800 500" class="roofline-svg" preserveAspectRatio="xMidYMid meet">
+                                <line x1="100" y1="100" x2="700" y2="100" class="roofline-grid-line" />
+                                <line x1="100" y1="200" x2="700" y2="200" class="roofline-grid-line" />
+                                <line x1="100" y1="300" x2="700" y2="300" class="roofline-grid-line" />
+                                <line x1="100" y1="400" x2="700" y2="400" class="roofline-grid-line" />
+                                <line x1="100" y1="450" x2="100" y2="50" class="roofline-axis" />
+                                <line x1="100" y1="450" x2="750" y2="450" class="roofline-axis" />
+                                <line x1="100" y1="450" x2="400" y2="100" class="roofline-slope" />
+                                <line x1="400" y1="100" x2="750" y2="100" class="roofline-ceiling" />
+                                <rect x="390" y="90" width="20" height="20" class="roofline-ridge" />
+                                <text x="420" y="85" fill="#76B900" class="text-sm font-bold">RIDGE POINT (AI_crit)</text>
+                                <text x="420" y="105" fill="#94a3b8" class="text-xs">~300 FLOPs/Byte (H100)</text>
+                                <circle cx="200" cy="350" class="roofline-kernel-dot" fill="#f59e0b" />
+                                <text x="180" y="380" fill="#e2e8f0" class="text-xs font-semibold">Softmax / Add</text>
+                                <circle cx="600" cy="115 " class="roofline-kernel-dot" fill="#22d3ee" />
+                                <text x="560" y="145" fill="#e2e8f0" class="text-xs font-semibold">Dense GEMM</text>
+                                <circle cx="410" cy="110" class="roofline-kernel-dot" fill="#e2e8f0" />
+                                <text x="360" y="145" fill="#e2e8f0" class="text-xs font-semibold">FlashAttention</text>
+                                <text x="150" y="250" fill="#fbbf24" class="text-lg font-bold opacity-30 uppercase tracking-widest" transform="rotate(-49, 150, 250)">Memory Bound</text>
+                                <text x="500" y="70" fill="#22d3ee" class="text-lg font-bold opacity-30 uppercase tracking-widest">Compute Bound</text>
+                                <text x="400" y="490" fill="#94a3b8" text-anchor="middle" class="text-sm">Log Arithmetic Intensity (FLOPs / Byte)</text>
+                                <text x="40" y="250" fill="#94a3b8" text-anchor="middle" class="text-sm" transform="rotate(-90, 40, 250)">Performance (TFLOPS)</text>
+                            </svg>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20 md:col-span-1">
+                                <h3 class="text-amber-400 font-bold text-sm mb-2">Memory-Bound Region</h3>
+                                <p class="text-xs text-slate-300">Workloads like <strong>LayerNorm</strong> or <strong>Element-wise ops</strong> live here. Limited by HBM bandwidth.</p>
+                                <p class="text-xs mt-2 font-semibold text-amber-200">Fix: Kernel fusion, better caching.</p>
+                            </div>
+                            <div class="bg-cyan-500/10 p-4 rounded-xl border border-cyan-500/20 md:col-span-1">
+                                <h3 class="text-cyan-400 font-bold text-sm mb-2">Compute-Bound Region</h3>
+                                <p class="text-xs text-slate-300">Workloads like <strong>Large MatMuls</strong> live here. Limited by Tensor Core throughput.</p>
+                                <p class="text-xs mt-2 font-semibold text-cyan-200">Fix: SASS/PTX tuning, lower precision (FP8).</p>
+                            </div>
+                            <div class="bg-slate-700/50 p-4 rounded-xl border border-slate-600 md:col-span-1">
+                                <h3 class="nv-green font-bold text-sm mb-2">Ridge Point</h3>
+                                <p class="text-xs text-slate-300 leading-relaxed">
+                                    Inflection point where the bottleneck shifts. For H100:
+                                    <code class="block mt-2 mb-2 bg-slate-800 px-2 py-1 rounded text-slate-200 text-xs">Ridge = Peak_TFLOPS / Peak_BW</code>
+                                    H100 has a high ridge (~300), so kernels must be very math-heavy to reach 100% SM utilization.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 text-sm mt-4">
+                        <strong class="text-amber-400">Yellow line:</strong> Memory bandwidth. <strong class="text-cyan-400">Cyan line:</strong> Arithmetic bandwidth. They meet at the <span class="nv-green">Ridge Point</span>. Example kernels (Softmax/Add, Dense GEMM, FlashAttention) show where typical workloads sit. If a kernel is far below the lines, discuss <strong class="text-slate-400">occupancy</strong> and <strong class="text-slate-400">memory latency stalls</strong>.
+                    </p>
+                </section>
+
+                <section id="two-roofs" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Two Roofs &amp; Ridge Point</h2>
+                    <div class="mermaid">
+flowchart LR
+    subgraph COMPROOF["Compute roof"]
+        C1["Horizontal line"]
+        C2["Height = arithmetic bandwidth"]
+        C3["CUDA Cores or Tensor Cores peak"]
+        C1 --> C2 --> C3
+    end
+    subgraph MEMROOF["Memory roof"]
+        M1["Slanted line"]
+        M2["Slope = memory bandwidth"]
+        M3["On line = memory-limited"]
+        M1 --> M2 --> M3
+    end
+    subgraph RIDGE["Ridge point"]
+        R1["Where diagonal and horizontal meet"]
+        R2["x = min AI to escape memory bottleneck"]
+        R3["Ridge right = harder to hit max perf"]
+        R1 --> R2 --> R3
+    end
+    COMPROOF --- MEMROOF --- RIDGE
+    style COMPROOF fill:#1e3a1e,stroke:#22c55e,color:#e2e8f0
+    style MEMROOF fill:#1e3a5f,stroke:#3b82f6,color:#e2e8f0
+    style RIDGE fill:#334155,stroke:#76B900,color:#e2e8f0
+                    </div>
+                    <p class="text-slate-400 mt-4">
+                        The <strong class="nv-green">ridge point</strong> is the boundary where the two roofs meet. Its <strong>x-coordinate</strong> is the minimum arithmetic intensity required to escape the memory bottleneck. Computer systems whose ridge point is further to the <strong>left</strong> are easier to achieve maximum performance on; the relatively poor scaling of memory relative to compute has pushed ridge points to the <strong>right</strong> over time.
+                    </p>
+                </section>
+
+                <section id="subsystems" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Subsystems &amp; NCU</h2>
+                    <p class="text-slate-400 mb-4">
+                        The compute and memory roofs need only be derived once per <strong class="text-white">subsystem</strong>—and they vary by subsystem, not just by system. <strong class="text-slate-300">Tensor Cores</strong> have more FLOPS than <strong class="text-slate-300">CUDA Cores</strong>, so the flat roof is higher for Tensor Core workloads.
+                    </p>
+                    <p class="text-slate-400">
+                        <strong class="nv-green">NVIDIA Nsight Compute</strong> automatically performs roofline analysis for profiled kernels, so you can see where your kernel sits relative to both roofs without plotting by hand.
+                    </p>
+                </section>
+
+                <section id="caveats" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Caveats &amp; Origin</h2>
+                    <p class="text-slate-400 mb-4">
+                        The roofline model is <strong class="text-amber-400">deceptively simple</strong>. System <strong>latencies</strong> do not appear anywhere in the diagram—only bandwidths and throughputs. It is simple because it is highly opinionated; understanding those opinions and their reasoning is key to using the model well.
+                    </p>
+                    <p class="text-slate-400">
+                        The roofline model was introduced by <strong class="text-white">Samuel Williams, Andrew Waterman, and David Patterson</strong> in their <a href="https://doi.org/10.1145/1498765.1498785" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">2008 paper</a> (CACM). It was proposed in the face of several hardware scaling trends that still shape system design today.
+                    </p>
+                </section>
+
+                <section id="context" class="card scroll-mt-6">
+                    <h2 class="text-2xl font-semibold mb-4 nv-green">Why Roofline: Historical Context</h2>
+                    <div class="mermaid">
+flowchart TB
+    subgraph TRENDS["Trends that motivated roofline"]
+        T1["Latency lags bandwidth"]
+        T2["Memory wall: compute scaled faster than memory"]
+        T3["End of Dennard scaling; Moore's Law continued"]
+        T1 --> T2 --> T3
+    end
+    subgraph IMPL["Implications"]
+        I1["Throughput-oriented systems"]
+        I2["Memory as primary bottleneck"]
+        I3["Need high AI for peak perf e.g. Tensor Cores"]
+        I1 --> I2 --> I3
+    end
+    TRENDS --> IMPL
+    style TRENDS fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style IMPL fill:#1e3a2e,stroke:#22c55e,color:#e2e8f0
+                    </div>
+                    <ul class="text-slate-400 mt-4 space-y-2 list-disc list-inside">
+                        <li><strong class="text-slate-300">Latency lags bandwidth</strong> (Patterson, 2004): linear improvement in latency has historically come with quadratic improvement in bandwidth → throughput-oriented designs (like GPUs).</li>
+                        <li><strong class="text-slate-300">Memory wall</strong> (Wulf &amp; McKee, 1994): compute has scaled much faster than memory/caches/DRAM.</li>
+                        <li><strong class="text-slate-300">End of Dennard scaling</strong>: clock speed could not keep rising at equal power; transistor count kept rising (Moore’s Law) → solution was <strong>hardware specialization</strong> (e.g. GPUs, accelerators).</li>
+                    </ul>
+                    <p class="text-slate-400 mt-4">
+                        Taken together, these trends suggested that future systems would be throughput-oriented and that <strong class="text-white">memory bandwidth</strong> would be the primary performance bottleneck. Applications that want peak performance need high <strong class="nv-green">arithmetic intensity</strong> for the hardware’s specialized ops—on GPUs, that means high AI for Tensor Cores, i.e. very large matrix multiplications.
+                    </p>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#76B900',
+                primaryTextColor: '#e2e8f0',
+                primaryBorderColor: '#334155',
+                lineColor: '#94a3b8',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#0f172a'
+            }
+        });
+    </script>
+</body>
+</html>
