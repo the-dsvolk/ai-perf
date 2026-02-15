@@ -47,6 +47,7 @@
                     <div class="ml-10 flex items-baseline space-x-4">
                         <a href="#overview" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Overview</a>
                         <a href="#comparison" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Comparison</a>
+                        <a href="#threads" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">PyTorch Threads</a>
                         <a href="#workflow" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Interactive Workflow</a>
                         <a href="#summary" class="nav-link px-3 py-2 text-sm font-medium text-slate-600 border-b-2 border-transparent">Summary</a>
                     </div>
@@ -128,6 +129,133 @@
 
         <div class="w-full border-t border-slate-200 my-16"></div>
 
+        <section id="threads" class="scroll-mt-24 mb-16">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">Key PyTorch Threads in Nsight Systems</h2>
+                <p class="mt-4 max-w-3xl mx-auto text-lg text-slate-600">When you open an <code class="text-sm bg-slate-100 px-1.5 py-0.5 rounded">nsys</code> timeline for a PyTorch training job, two threads tell most of the story. Understanding their roles is essential for diagnosing performance issues.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 items-start mb-8">
+                <!-- pt_main_thread -->
+                <div class="bg-white p-8 rounded-xl shadow-md">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-teal-100 text-teal-600 text-lg font-bold flex-shrink-0">1</span>
+                        <h3 class="text-xl font-semibold text-slate-800"><code>pt_main_thread</code></h3>
+                    </div>
+                    <p class="text-slate-600 mb-4">The <strong>orchestrator</strong>. This is your Python main thread — it drives the entire training loop: data loading, kernel launches, optimizer steps, and communication between system components.</p>
+                    <h4 class="font-semibold text-slate-700 mb-2">What to look for</h4>
+                    <ul class="space-y-2 text-sm text-slate-600">
+                        <li class="flex items-start">
+                            <span class="text-teal-500 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong>Green bars</strong> = active GPU work initiated by this thread. High utilization is good.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-slate-400 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong>Gray gaps</strong> = GPU idle periods. These reveal stalls caused by: slow data loading on CPU, CPU-GPU synchronization issues, or insufficient compute/communication overlap.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-orange-400 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong>Orange bars</strong> = CUDA memory transfers (<code class="text-xs bg-slate-100 px-1 rounded">cudaMemcpy</code>). Frequent transfers indicate excessive CPU↔GPU data movement — a common bottleneck.</span>
+                        </li>
+                    </ul>
+                    <div class="mt-4 p-4 bg-slate-50 rounded-lg">
+                        <p class="text-sm font-medium text-slate-700 mb-2">Simplified Timeline</p>
+                        <div class="space-y-1.5">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-500">pt_main_thread (CPU)</span>
+                                <div class="grid grid-cols-6 gap-1 mt-1">
+                                    <div class="col-span-1 timeline-bar timeline-cpu flex items-center justify-center text-xs text-white">Data</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Forward</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Backward</div>
+                                    <div class="col-span-1 timeline-bar timeline-cpu flex items-center justify-center text-xs text-white">Optim</div>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="text-xs font-semibold text-slate-500">GPU Hardware</span>
+                                <div class="grid grid-cols-6 gap-1 mt-1">
+                                    <div class="col-span-1 timeline-bar timeline-gap flex items-center justify-center text-xs text-slate-400">idle</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">GEMM</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">GEMM</div>
+                                    <div class="col-span-1 timeline-bar timeline-gap flex items-center justify-center text-xs text-slate-400">idle</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- pt_autograd_0 -->
+                <div class="bg-white p-8 rounded-xl shadow-md">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-sky-100 text-sky-600 text-lg font-bold flex-shrink-0">2</span>
+                        <h3 class="text-xl font-semibold text-slate-800"><code>pt_autograd_0</code></h3>
+                    </div>
+                    <p class="text-slate-600 mb-4">The <strong>gradient engine</strong>. This thread runs PyTorch's autograd — automatic differentiation for computing gradients during backpropagation. It launches the backward-pass kernels asynchronously from the main thread.</p>
+                    <h4 class="font-semibold text-slate-700 mb-2">What to look for</h4>
+                    <ul class="space-y-2 text-sm text-slate-600">
+                        <li class="flex items-start">
+                            <span class="text-green-500 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong>Green sections</strong> = active gradient computation. The autograd engine is doing useful work.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-amber-600 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong>Brown dotted sections</strong> = thread preemption or context switching. The thread is paused, possibly due to resource contention or OS scheduling.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <span class="text-red-500 mr-2 mt-0.5 flex-shrink-0">&#9679;</span>
+                            <span><strong><code class="text-xs bg-slate-100 px-1 rounded">pthread_cond_wait</code> blocks</strong> = the CPU thread is blocked, waiting for GPU kernels to finish. Frequent/long waits are a synchronization bottleneck.</span>
+                        </li>
+                    </ul>
+                    <div class="mt-4 p-4 bg-slate-50 rounded-lg">
+                        <p class="text-sm font-medium text-slate-700 mb-2">Simplified Timeline</p>
+                        <div class="space-y-1.5">
+                            <div>
+                                <span class="text-xs font-semibold text-slate-500">pt_autograd_0 (CPU)</span>
+                                <div class="grid grid-cols-8 gap-1 mt-1">
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Grad</div>
+                                    <div class="col-span-1 timeline-bar flex items-center justify-center text-xs text-white" style="background:#ef4444;">Wait</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Grad</div>
+                                    <div class="col-span-1 timeline-bar flex items-center justify-center text-xs text-white" style="background:#ef4444;">Wait</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Grad</div>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="text-xs font-semibold text-slate-500">GPU Streams</span>
+                                <div class="grid grid-cols-8 gap-1 mt-1">
+                                    <div class="col-span-3 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Backward GEMM</div>
+                                    <div class="col-span-3 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">Backward GEMM</div>
+                                    <div class="col-span-2 timeline-bar timeline-gpu flex items-center justify-center text-xs text-teal-900">AllReduce</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Optimization strategies -->
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-lg font-semibold text-slate-800 mb-4">Optimization Strategies Based on Thread Analysis</h3>
+                <div class="grid md:grid-cols-3 gap-4">
+                    <div class="bg-slate-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-sm text-slate-700 mb-2">Overlap Computation & Communication</h4>
+                        <p class="text-xs text-slate-600">Reduce synchronization points by performing gradient all-reduce concurrently with backward-pass computation. DDP's <code class="bg-slate-200 px-1 rounded">gradient_as_bucket_view</code> helps here.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-sm text-slate-700 mb-2">Reduce <code class="bg-slate-200 px-1 rounded">pthread_cond_wait</code></h4>
+                        <p class="text-xs text-slate-600">Frequent waits in <code class="bg-slate-200 px-1 rounded">pt_autograd_0</code> mean the CPU is blocked on GPU. Check for implicit syncs like <code class="bg-slate-200 px-1 rounded">.item()</code>, <code class="bg-slate-200 px-1 rounded">print(tensor)</code>, or loss logging that forces a device sync.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-sm text-slate-700 mb-2">Minimize GPU Idle in Main Thread</h4>
+                        <p class="text-xs text-slate-600">Gray gaps on the GPU row aligned with data loading on <code class="bg-slate-200 px-1 rounded">pt_main_thread</code> mean the DataLoader is starving the GPU. Increase <code class="bg-slate-200 px-1 rounded">num_workers</code> or use <code class="bg-slate-200 px-1 rounded">pin_memory=True</code>.</p>
+                    </div>
+                </div>
+                <div class="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                    <p class="text-sm text-teal-800"><strong>Source:</strong> <a href="https://developer.nvidia.com/blog/profiling-llm-training-workflows-on-nvidia-grace-hopper/" target="_blank" class="underline hover:text-teal-600">Profiling LLM Training Workflows on NVIDIA Grace Hopper</a> — NVIDIA Technical Blog (May 2025)</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="w-full border-t border-slate-200 my-16"></div>
+
         <section id="workflow" class="scroll-mt-24 mb-16">
             <div class="text-center mb-12">
                 <h2 class="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">Interactive Profiling Workflow</h2>
@@ -137,11 +265,12 @@
             <div class="bg-white rounded-xl shadow-md overflow-hidden">
                 <div class="p-8">
                     <h3 class="text-xl font-semibold text-slate-800 mb-4">Step 1: What is your performance goal?</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="find-op">Find my slowest model operator</button>
                         <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="debug-gpu">Debug GPU idle time or data bottlenecks</button>
                         <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="isolate-region">Profile a specific "hot" section of code</button>
                         <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="cpu-hotspot">Find the source of a CPU-bound hotspot</button>
+                        <button class="step-button p-4 rounded-lg font-medium transition duration-200 text-left" data-step="llm-comprehensive">Comprehensive LLM training profile</button>
                     </div>
                 </div>
 
@@ -282,6 +411,84 @@ torch.cuda.cudart().cudaProfilerStop()
                     analysisTitle: 'What to Look For in the Nsight Systems GUI',
                     analysis: `
                         <p class="text-slate-600 mb-4">After running, the \`nsys\` GUI will have a "CPU stack samples" view. Sort this view by "Total" or "Self" time to see which Python or C++ functions are at the top. This will pinpoint the exact lines of code that are causing the CPU bottleneck. Use this for targeted debugging, as the overhead can distort overall performance measurements.</p>
+                    `
+                },
+                'llm-comprehensive': {
+                    title: 'Comprehensive LLM Training Profile',
+                    tool: 'NVIDIA Nsight Systems (`nsys`) — Full Stack',
+                    description: 'For LLM training workloads, use a comprehensive nsys profile that captures CUDA kernels, cuBLAS/cuDNN calls, NVTX ranges, OS runtime events, CPU sampling, Python sampling, and CUDA backtraces. This gives you the full picture: pt_main_thread orchestration, pt_autograd_0 backward pass, kernel performance, and CPU hotspots — all in one report.',
+                    code: `
+# Comprehensive LLM profiling command:
+nsys profile \\
+    --force-overwrite=true \\
+    -o /path/to/benchmark.nsys-rep \\
+    -t cuda,nvtx,osrt,cublas,cudnn \\
+    -s cpu \\
+    --python-sampling=true \\
+    --python-sampling-frequency=1000 \\
+    --cudabacktrace=true \\
+    --stats=true \\
+    python /tmp/wrapper.py
+
+# After profiling, extract specific metrics from the report:
+nsys stats --report cuda_gpu_kern_gb_sum  benchmark.nsys-rep
+nsys stats --report cuda_api_sum          benchmark.nsys-rep
+nsys stats --report cuda_gpu_mem_time_sum benchmark.nsys-rep
+                    `.trim(),
+                    analysisTitle: 'Key Flags Explained + Post-Processing with <code>nsys stats</code>',
+                    analysis: `
+                        <div class="space-y-4">
+                            <div>
+                                <p class="text-slate-600 mb-3"><strong>Key flags in this command:</strong></p>
+                                <ul class="space-y-2 text-sm text-slate-600">
+                                    <li><code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">-t cuda,nvtx,osrt,cublas,cudnn</code> — Trace CUDA ops, NVTX ranges (incl. PyTorch autograd), OS runtime, cuBLAS GEMMs, and cuDNN convolutions</li>
+                                    <li><code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">-s cpu</code> — Enable CPU sampling to find host-side hotspots</li>
+                                    <li><code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">--python-sampling=true</code> — Sample Python stack frames (1 kHz) so you can trace GPU stalls back to your Python code</li>
+                                    <li><code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">--cudabacktrace=true</code> — Capture CUDA API call stacks — essential for correlating kernel launches to Python code</li>
+                                    <li><code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">--stats=true</code> — Automatically generate summary statistics when profiling finishes</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <p class="text-slate-600 mb-3"><strong>Post-processing with <code class="bg-slate-100 px-1.5 py-0.5 rounded text-xs">nsys stats</code>:</strong> Extract specific metrics from the <code>.nsys-rep</code> file without opening the GUI. Useful reports include:</p>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm text-left">
+                                        <thead>
+                                            <tr class="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
+                                                <th class="pb-2 pr-4">Report</th>
+                                                <th class="pb-2">What It Shows</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="text-slate-600">
+                                            <tr class="border-b border-slate-100">
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_gpu_kern_sum</code></td>
+                                                <td class="py-2">GPU kernel summary — find the dominant kernel (e.g., <code class="text-xs bg-slate-100 px-1 rounded">sm90_xmma_gemm_bf16bf16</code>)</td>
+                                            </tr>
+                                            <tr class="border-b border-slate-100">
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_gpu_kern_gb_sum</code></td>
+                                                <td class="py-2">Kernel/Grid/Block summary — includes launch config (grid dims, block dims)</td>
+                                            </tr>
+                                            <tr class="border-b border-slate-100">
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_api_sum</code></td>
+                                                <td class="py-2">CUDA API call summary — time in <code class="text-xs bg-slate-100 px-1 rounded">cudaLaunchKernel</code>, <code class="text-xs bg-slate-100 px-1 rounded">cudaMemcpy</code>, etc.</td>
+                                            </tr>
+                                            <tr class="border-b border-slate-100">
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_gpu_mem_time_sum</code></td>
+                                                <td class="py-2">Memory operations by time — spot expensive H2D/D2H transfers</td>
+                                            </tr>
+                                            <tr class="border-b border-slate-100">
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_gpu_mem_size_sum</code></td>
+                                                <td class="py-2">Memory operations by size — find large allocations</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="py-2 pr-4"><code class="text-xs bg-slate-100 px-1 rounded">cuda_kern_exec_sum</code></td>
+                                                <td class="py-2">Kernel launch + exec time — measure launch overhead vs. actual compute</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p class="text-slate-500 text-xs mt-3">50+ built-in reports available. Run <code class="bg-slate-100 px-1 rounded">nsys stats --help</code> for the full list. Append <code class="bg-slate-100 px-1 rounded">[:nvtx-name]</code> to filter by NVTX range (e.g., <code class="bg-slate-100 px-1 rounded">cuda_gpu_kern_sum:forward</code>).</p>
+                            </div>
+                        </div>
                     `
                 }
             };
