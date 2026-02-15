@@ -87,6 +87,22 @@
                             <td class="cell cell-highlight">5,000 TFlops (Total)¹</td>
                         </tr>
                         <tr>
+                            <td class="row-header">FP8 Tensor Core (Sparse)</td>
+                            <td class="cell">3,958 TFlops</td>
+                            <td class="cell">3,958 TFlops</td>
+                            <td class="cell">3,958 TFlops</td>
+                            <td class="cell">4,500 TFlops</td>
+                            <td class="cell cell-highlight">9,000 TFlops (Total)¹</td>
+                        </tr>
+                        <tr>
+                            <td class="row-header">FP4 Tensor Core (Sparse)²</td>
+                            <td class="cell" style="color:#94a3b8;">—</td>
+                            <td class="cell" style="color:#94a3b8;">—</td>
+                            <td class="cell" style="color:#94a3b8;">—</td>
+                            <td class="cell cell-highlight">9,000 TFlops</td>
+                            <td class="cell cell-highlight">18,000 TFlops (Total)¹</td>
+                        </tr>
+                        <tr>
                             <td class="row-header">GPU Memory (VRAM)</td>
                             <td class="cell">80 GB HBM3</td>
                             <td class="cell">141 GB HBM3e</td>
@@ -120,7 +136,8 @@
                         </tr>
                     </tbody>
                 </table>
-                <p class="footnote">¹ GB200 combines two B200 GPUs with a Grace CPU; 5,000 TFlops is the combined FP16 sparse tensor throughput for the dual-GPU superchip.</p>
+                <p class="footnote">¹ GB200 combines two B200 GPUs with a Grace CPU; "Total" figures are the combined throughput for the dual-GPU superchip.</p>
+                <p class="footnote">² FP4 (4-bit floating point) is introduced with the Blackwell architecture. Hopper-based chips (H100, H200, GH200) do not have native FP4 Tensor Core support. FP8 was introduced with Hopper and is supported by all chips in this table.</p>
             </section>
         </main>
 
