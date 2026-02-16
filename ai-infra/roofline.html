@@ -184,7 +184,7 @@ flowchart LR
                                 <text x="360" y="145" fill="#e2e8f0" class="text-xs font-semibold">FlashAttention</text>
                                 <text x="150" y="250" fill="#fbbf24" class="text-lg font-bold opacity-30 uppercase tracking-widest" transform="rotate(-49, 150, 250)">Memory Bound</text>
                                 <text x="500" y="70" fill="#22d3ee" class="text-lg font-bold opacity-30 uppercase tracking-widest">Compute Bound</text>
-                                <text x="400" y="490" fill="#94a3b8" text-anchor="middle" class="text-sm">Log Arithmetic Intensity (FLOPs / Byte)</text>
+                                <text x="400" y="490" fill="#94a3b8" text-anchor="middle" class="text-sm">Arithmetic Intensity (FLOPs / Byte) — log scale</text>
                                 <text x="40" y="250" fill="#94a3b8" text-anchor="middle" class="text-sm" transform="rotate(-90, 40, 250)">Performance (TFLOPS)</text>
                             </svg>
                         </div>
@@ -202,8 +202,10 @@ flowchart LR
                             <div class="bg-slate-700/50 p-4 rounded-xl border border-slate-600 md:col-span-1">
                                 <h3 class="nv-green font-bold text-sm mb-2">Ridge Point</h3>
                                 <p class="text-xs text-slate-300 leading-relaxed">
-                                    Inflection point where the bottleneck shifts. For H100:
-                                    <code class="block mt-2 mb-2 bg-slate-800 px-2 py-1 rounded text-slate-200 text-xs">Ridge = Peak_TFLOPS / Peak_BW</code>
+                                    Inflection point where the bottleneck shifts. The critical arithmetic intensity (AI<sub>crit</sub>):
+                                    <code class="block mt-2 mb-1 bg-slate-800 px-2 py-1 rounded text-slate-200 text-xs">AI_crit = Peak Compute / Peak Memory BW</code>
+                                    <span class="block text-slate-500 text-xs mb-2">Units: (FLOP/s) ÷ (Byte/s) = <strong class="text-slate-300">FLOP/Byte</strong> — the seconds cancel.</span>
+                                    <code class="block mb-2 bg-slate-800 px-2 py-1 rounded text-slate-200 text-xs">H100: 989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOP/Byte</code>
                                     H100 has a high ridge (~300), so kernels must be very math-heavy to reach 100% SM utilization.
                                 </p>
                             </div>
