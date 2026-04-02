@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCCL Performance: Protocols, Algorithms &amp; Tuning</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.3.1.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .mermaid { background-color: transparent !important; }
+        .mermaid svg { max-width: 100%; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        h1, h2, h3 {
+            color: #0284c7;
+        }
+        .support-table th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .env-var {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e2e8f0;
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold">NCCL Performance</h1>
+            <p class="text-lg text-slate-600 mt-2">Protocols, Algorithms &amp; Tuning for Multi-GPU Communication</p>
+        </header>
+
+        <!-- Why NCCL? -->
+        <section id="why-nccl" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Why NCCL?</h2>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                In data-parallel training every GPU holds a full copy of the model and processes a different mini-batch.
+                After the forward and backward pass each GPU has <strong>local gradients</strong>&mdash;but every GPU needs the
+                <em>same</em> globally-averaged gradients before it can update its parameters.
+                That synchronisation step is an <strong>AllReduce</strong>, and it is the single hottest communication primitive in distributed training.
+            </p>
+            <p class="text-slate-700 leading-relaxed mb-5">
+                NCCL (NVIDIA Collective Communications Library) is what makes this fast.
+                It picks the best algorithm, protocol, and transport for the hardware topology so that
+                gradient synchronisation overlaps with computation instead of blocking it.
+            </p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph GPU0["GPU 0"]
+        P0["Parameters"] --> F0["Forward + Backward\n(batch 0)"]
+        F0 --> G0["Local Gradients"]
+    end
+    subgraph GPU1["GPU 1"]
+        P1["Parameters"] --> F1["Forward + Backward\n(batch 1)"]
+        F1 --> G1["Local Gradients"]
+    end
+    subgraph GPU2["GPU 2"]
+        P2["Parameters"] --> F2["Forward + Backward\n(batch 2)"]
+        F2 --> G2["Local Gradients"]
+    end
+    subgraph GPU3["GPU 3"]
+        P3["Parameters"] --> F3["Forward + Backward\n(batch 3)"]
+        F3 --> G3["Local Gradients"]
+    end
+
+    G0 --> AR["NCCL AllReduce\nSum gradients across GPUs"]
+    G1 --> AR
+    G2 --> AR
+    G3 --> AR
+
+    AR --> U0["Averaged Gradients"]
+    AR --> U1["Averaged Gradients"]
+    AR --> U2["Averaged Gradients"]
+    AR --> U3["Averaged Gradients"]
+
+    U0 -.->|"update"| P0
+    U1 -.->|"update"| P1
+    U2 -.->|"update"| P2
+    U3 -.->|"update"| P3
+
+    style AR fill:#76B900,stroke:#5a8f00,color:#fff,font-weight:bold
+    style G0 fill:#555,stroke:#333,color:#fff
+    style G1 fill:#555,stroke:#333,color:#fff
+    style G2 fill:#555,stroke:#333,color:#fff
+    style G3 fill:#555,stroke:#333,color:#fff
+    style U0 fill:#555,stroke:#333,color:#fff
+    style U1 fill:#555,stroke:#333,color:#fff
+    style U2 fill:#555,stroke:#333,color:#fff
+    style U3 fill:#555,stroke:#333,color:#fff
+    style P0 fill:#444,stroke:#333,color:#fff
+    style P1 fill:#444,stroke:#333,color:#fff
+    style P2 fill:#444,stroke:#333,color:#fff
+    style P3 fill:#444,stroke:#333,color:#fff
+            </div>
+            <p class="text-center text-sm text-slate-500 mt-3 italic">
+                Data-parallel training: each GPU computes local gradients on its own batch,
+                then NCCL AllReduce sums them so every GPU gets identical averaged gradients for the parameter update.
+            </p>
+        </section>
+
+        <!-- The Two Key Tables: Protocol Comparison & Buffer Sizes -->
+        <section id="at-a-glance" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">The Three Protocols at a Glance</h2>
+            <p class="text-slate-700 leading-relaxed mb-2">
+                Every NCCL collective ultimately moves data through one of three <strong>communication protocols</strong>.
+                Understanding their trade-offs is the single most important thing for reasoning about NCCL performance:
+                <em>Simple</em> maximises bandwidth for large transfers,
+                <em>LL</em> minimises latency for small ones,
+                and <em>LL128</em> tries to give you both&mdash;especially over NVLink.
+            </p>
+            <p class="text-slate-700 leading-relaxed mb-5">
+                The two tables below are the reference you need.
+                The first shows how each protocol synchronises data, what it costs per hop, and how much bandwidth it can use.
+                The second shows the buffer geometry&mdash;how much data each protocol can pipeline through a single channel.
+                Together they explain <em>why</em> NCCL picks different protocols for different message sizes.
+            </p>
+
+            <h3 class="text-xl font-medium mb-3 text-sky-700">Protocol Comparison</h3>
+            <div class="overflow-x-auto mb-6">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-3 text-left rounded-tl-lg">Property</th>
+                            <th class="p-3 text-center">Simple</th>
+                            <th class="p-3 text-center">LL (Low Latency)</th>
+                            <th class="p-3 text-center rounded-tr-lg">LL128</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Design Goal</td>
+                            <td class="p-3 text-center">High bandwidth</td>
+                            <td class="p-3 text-center">Low latency</td>
+                            <td class="p-3 text-center">Low latency + high bandwidth</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">Synchronization</td>
+                            <td class="p-3 text-center">Memory fences<br><span class="text-xs text-slate-500">(high overhead)</span></td>
+                            <td class="p-3 text-center">Flag-based</td>
+                            <td class="p-3 text-center">Flag-based</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Payload Unit</td>
+                            <td class="p-3 text-center">Data chunks</td>
+                            <td class="p-3 text-center">4B data + 4B flag</td>
+                            <td class="p-3 text-center">120B data + 8B flag</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">Bandwidth Utilization</td>
+                            <td class="p-3 text-center">Near peak</td>
+                            <td class="p-3 text-center">25&ndash;50% of peak</td>
+                            <td class="p-3 text-center">~95% of peak</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Per-hop Latency</td>
+                            <td class="p-3 text-center">~6 &mu;s</td>
+                            <td class="p-3 text-center">~1 &mu;s</td>
+                            <td class="p-3 text-center">~2 &mu;s</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 class="text-xl font-medium mb-3 text-sky-700">Channel Buffer Sizes</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Each protocol allocates a fixed-size buffer per communication channel, divided into 8 pipeline slots.
+                The buffer geometry determines how much data can be in-flight and directly affects pipelining efficiency.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-3 text-left rounded-tl-lg">Protocol</th>
+                            <th class="p-3 text-center">Total Channel Buffer</th>
+                            <th class="p-3 text-center">Buffer per Slot</th>
+                            <th class="p-3 text-center rounded-tr-lg">Effective Data per Slot</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Simple</td>
+                            <td class="p-3 text-center">4 MiB</td>
+                            <td class="p-3 text-center">512 KiB</td>
+                            <td class="p-3 text-center">512 KiB</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">LL</td>
+                            <td class="p-3 text-center">256 KiB</td>
+                            <td class="p-3 text-center">32 KiB</td>
+                            <td class="p-3 text-center">16 KiB</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">LL128</td>
+                            <td class="p-3 text-center">~4800 KiB</td>
+                            <td class="p-3 text-center">600 KiB</td>
+                            <td class="p-3 text-center">562.5 KiB</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">
+                LL wastes 50% of each 8-byte unit on flags&mdash;hence its low bandwidth.
+                LL128 wastes only 8B out of 128B (~6%), which is why it recovers ~95% of peak.
+                Simple has zero flag overhead; synchronization cost is in the memory fences instead.
+            </p>
+        </section>
+
+        <!-- Algorithm & Collective Support Matrix -->
+        <section id="algorithm-support" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Algorithm &amp; Collective Support Matrix</h2>
+            <p class="text-slate-700 leading-relaxed mb-4">
+                NCCL implements multiple algorithms, each supporting a subset of collectives and protocols.
+                The table below summarises which algorithm&ndash;collective combinations are available in NCCL&nbsp;v2.19+.
+            </p>
+            <div class="overflow-x-auto">
+                <table class="support-table w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-3 text-left rounded-tl-lg">Algorithm</th>
+                            <th class="p-3 text-left">Protocols</th>
+                            <th class="p-3 text-center">AllReduce</th>
+                            <th class="p-3 text-center">Broadcast</th>
+                            <th class="p-3 text-center">Reduce</th>
+                            <th class="p-3 text-center">ReduceScatter</th>
+                            <th class="p-3 text-center rounded-tr-lg">AllGather</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Ring</td>
+                            <td class="p-3">Simple / LL / LL128</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">Tree</td>
+                            <td class="p-3">Simple / LL / LL128</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">NVLS <span class="text-xs text-slate-500">(Intra-node)</span></td>
+                            <td class="p-3">Simple only</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">NVLS Tree <span class="text-xs text-slate-500">(Multi-node)</span></td>
+                            <td class="p-3">Simple only</td>
+                            <td class="p-3 text-center text-green-600 font-bold text-lg">&check;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                            <td class="p-3 text-center text-red-400 font-bold text-lg">&cross;</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-slate-500 mt-3">
+                NVLS algorithms leverage NVLink Switch (NVSwitch) for intra-node reduction.
+                NVLS Tree extends this with a tree-based fan-out for inter-node communication.
+                CollNet algorithms (not shown) offload reductions to SHARP-enabled network switches.
+            </p>
+        </section>
+
+        <!-- Communication Protocols (Detail) -->
+        <section id="protocols" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Protocol Deep Dive</h2>
+            <p class="text-slate-700 leading-relaxed mb-4">
+                The protocol comparison table above captures the <em>what</em>. Here is the <em>why</em>&mdash;how each
+                protocol synchronises data and where the bandwidth/latency trade-off comes from.
+            </p>
+
+            <h3 class="text-xl font-medium mt-4 mb-3 text-sky-700">Simple Protocol</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Designed to maximise bandwidth. Data is divided into large chunks dispatched across communication channels.
+                Uses <strong>memory fences</strong> to enforce ordering&mdash;a receiver must wait until a full chunk has landed before accessing it.
+                This makes it optimal for large transfers but adds significant overhead for small payloads.
+            </p>
+
+            <h3 class="text-xl font-medium mt-8 mb-3 text-sky-700">LL (Low Latency) Protocol</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Replaces memory fences with lightweight <strong>flag-based synchronization</strong>.
+                Each transmission is 4&nbsp;bytes of data + 4&nbsp;bytes of flag, sent together via an 8-byte atomic operation.
+                The intermediate buffer is placed in <em>host memory</em> so the CPU can poll the flag, which prevents GPUDirect RDMA and limits bandwidth to 25&ndash;50% of peak.
+                Preferred when latency matters more than throughput.
+            </p>
+
+            <h3 class="text-xl font-medium mt-8 mb-3 text-sky-700">LL128 Protocol</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Extends LL by transmitting 128-byte units (120B data + 8B flag), recovering ~95% of peak bandwidth while keeping flag-based sync.
+                Works best over NVLink, where atomic 128-byte writes are guaranteed.
+                On interconnects that cannot guarantee unsplit 128-byte atomics (e.g. PCIe), NCCL disables LL128 automatically.
+            </p>
+
+            <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded mt-6">
+                <p class="text-sm text-slate-700"><strong>Protocol Selection:</strong>
+                    NCCL's autotuner picks LL/LL128 for small messages and Simple for large ones.
+                    Override with <span class="env-var">NCCL_PROTO=Simple|LL|LL128</span>.
+                    In most cases, the autotuner's default is the best choice.
+                </p>
+            </div>
+        </section>
+
+        <!-- Communication Channels -->
+        <section id="channels" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Communication Channels</h2>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                NCCL subdivides every collective into <strong>communication channels</strong>.
+                Each channel is launched as a separate CUDA block on its own SM, operating on a disjoint slice of the input buffer in parallel.
+                This raises aggregate throughput, especially for large payloads, and helps balance traffic across multiple NICs on NVLink platforms.
+            </p>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                However, too many channels can cause the per-channel chunk size to fall below the 512&nbsp;KiB NIC-transport FIFO buffer,
+                leading to partially filled sends that degrade PCIe and network throughput.
+                NCCL heuristically reduces the active channel count for smaller messages.
+            </p>
+            <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded mt-4">
+                <p class="text-sm text-slate-700"><strong>Tuning note:</strong>
+                    Environment variables like <span class="env-var">NCCL_NTHREADS</span> were once used to influence channel behaviour,
+                    but are now discouraged in recent NCCL versions and may cause incorrect behaviour if set.
+                </p>
+            </div>
+        </section>
+
+        <!-- Data Transfer Methods -->
+        <section id="data-transfer" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Data Transfer Methods</h2>
+            <p class="text-slate-700 leading-relaxed mb-4">
+                NCCL uses different transport mechanisms depending on whether communication is intra-node or inter-node.
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-sky-50 p-5 rounded-lg border border-sky-200">
+                    <h3 class="text-lg font-semibold text-sky-700 mb-3">Intra-Node Transports</h3>
+                    <ul class="text-slate-700 text-sm space-y-2">
+                        <li><strong>P2P (NVLink):</strong> Preferred path. GPUDirect Peer-to-Peer over NVLink gives highest bandwidth and lowest latency.</li>
+                        <li><strong>P2P (PCIe):</strong> Fallback when NVLink is unavailable. Still avoids host-memory staging via GPUDirect.</li>
+                        <li><strong>P2P_DIRECT:</strong> Optimisation for same-process ranks&mdash;bypasses IPC handles and intermediate FIFO copies by using direct GPU memory pointers.</li>
+                        <li><strong>SHM (Shared Memory):</strong> Used when P2P over PCIe is suboptimal (e.g. inter-socket PCIe traffic). Routes via system memory.</li>
+                    </ul>
+                </div>
+                <div class="bg-sky-50 p-5 rounded-lg border border-sky-200">
+                    <h3 class="text-lg font-semibold text-sky-700 mb-3">Inter-Node Transports</h3>
+                    <ul class="text-slate-700 text-sm space-y-2">
+                        <li><strong>IB Verbs (InfiniBand / RoCE):</strong> High-performance RDMA transport. Data staged through intermediate buffers; proxy thread manages DMA/RDMA operations.</li>
+                        <li><strong>GPUDirect RDMA:</strong> When NIC and GPU share a PCIe switch, the intermediate buffer lives in GPU memory&mdash;NIC accesses it directly, bypassing CPU and host memory entirely.</li>
+                        <li><strong>Socket (TCP):</strong> Fallback when RDMA is unavailable. Data copies through CPU-pinned host memory, incurring extra PCIe round-trips.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Collective Algorithms -->
+        <section id="algorithms" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Collective Algorithms</h2>
+            <p class="text-slate-700 leading-relaxed mb-4">
+                NCCL breaks each collective into low-level primitives (<code class="bg-slate-200 text-sm p-1 rounded">send</code>,
+                <code class="bg-slate-200 text-sm p-1 rounded">recv</code>,
+                <code class="bg-slate-200 text-sm p-1 rounded">recvReduceSend</code>,
+                <code class="bg-slate-200 text-sm p-1 rounded">recvCopySend</code>,
+                <code class="bg-slate-200 text-sm p-1 rounded">recvReduceCopySend</code>)
+                and distributes them across parallel channels.
+                Algorithms fall into two execution patterns:
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 mb-6">
+                <div class="border border-slate-200 rounded-lg p-5">
+                    <h3 class="text-lg font-semibold text-sky-700 mb-2">Non-Pipelined</h3>
+                    <p class="text-sm text-slate-700 mb-3">Each GPU must finish all steps in one iteration before starting the next.</p>
+                    <ul class="text-sm text-slate-600 space-y-1 list-disc list-inside">
+                        <li>Ring AllReduce (2k&minus;1 steps)</li>
+                        <li>Ring AllGather (k&minus;1 steps)</li>
+                        <li>Ring ReduceScatter (k&minus;1 steps)</li>
+                    </ul>
+                </div>
+                <div class="border border-slate-200 rounded-lg p-5">
+                    <h3 class="text-lg font-semibold text-sky-700 mb-2">Pipelined</h3>
+                    <p class="text-sm text-slate-700 mb-3">Consecutive loop iterations can overlap, enabling higher throughput.</p>
+                    <ul class="text-sm text-slate-600 space-y-1 list-disc list-inside">
+                        <li>Tree AllReduce (Reduce + Broadcast phases)</li>
+                        <li>Ring Broadcast</li>
+                        <li>Ring Reduce</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-medium mt-6 mb-3 text-sky-700">Ring AllReduce</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Combines a ReduceScatter phase with an AllGather phase over 2k&minus;1 steps (k&nbsp;=&nbsp;number of GPUs).
+                In the first k steps, each GPU receives a segment, reduces it with local data, and forwards the result.
+                In the remaining k&minus;1 steps, fully reduced segments are propagated around the ring via <code class="bg-slate-200 text-sm p-1 rounded">recvCopySend</code>.
+            </p>
+            <div class="overflow-x-auto mb-4">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100">
+                            <th class="p-2 text-left border border-slate-200">Step</th>
+                            <th class="p-2 text-left border border-slate-200">Primitive</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr><td class="p-2 border border-slate-200">0</td><td class="p-2 border border-slate-200"><code class="bg-slate-200 text-sm p-1 rounded">send</code></td></tr>
+                        <tr class="bg-slate-50"><td class="p-2 border border-slate-200">1 &hellip; k&minus;2</td><td class="p-2 border border-slate-200"><code class="bg-slate-200 text-sm p-1 rounded">recvReduceSend</code></td></tr>
+                        <tr><td class="p-2 border border-slate-200">k&minus;1</td><td class="p-2 border border-slate-200"><code class="bg-slate-200 text-sm p-1 rounded">recvReduceCopySend</code></td></tr>
+                        <tr class="bg-slate-50"><td class="p-2 border border-slate-200">k &hellip; 2k&minus;3</td><td class="p-2 border border-slate-200"><code class="bg-slate-200 text-sm p-1 rounded">recvCopySend</code></td></tr>
+                        <tr><td class="p-2 border border-slate-200">2k&minus;2</td><td class="p-2 border border-slate-200"><code class="bg-slate-200 text-sm p-1 rounded">recv</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 class="text-xl font-medium mt-6 mb-3 text-sky-700">Tree AllReduce</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                Uses a double binary tree topology. The algorithm proceeds in two phases within each loop iteration:
+            </p>
+            <ul class="text-slate-700 text-sm space-y-1 list-disc list-inside mb-3">
+                <li><strong>Reduce phase:</strong> Leaves <code class="bg-slate-200 text-sm p-1 rounded">send</code> upward; middle nodes <code class="bg-slate-200 text-sm p-1 rounded">recvReduceSend</code>; root performs <code class="bg-slate-200 text-sm p-1 rounded">recvReduceCopySend</code>.</li>
+                <li><strong>Broadcast phase:</strong> Root and middle nodes <code class="bg-slate-200 text-sm p-1 rounded">recvCopySend</code> downward; leaves <code class="bg-slate-200 text-sm p-1 rounded">recv</code>.</li>
+            </ul>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                These two phases can run concurrently by partitioning SMs into two groups&mdash;one for the bandwidth-intensive reduction, another for the broadcast&mdash;enabling overlap and better SM utilization.
+            </p>
+
+            <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded mt-4">
+                <p class="text-sm text-slate-700"><strong>When to use which?</strong>
+                    Ring excels for large messages (bandwidth-optimal), while Tree performs best for smaller messages (lower latency).
+                    NCCL's autotuner selects the algorithm based on message size and topology.
+                    Override with <span class="env-var">NCCL_ALGO=Ring|Tree</span>.
+                </p>
+            </div>
+        </section>
+
+        <!-- Performance Insights (theoretical) -->
+        <section id="perf-insights" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Performance Insights (Theoretical)</h2>
+            <p class="text-slate-700 leading-relaxed mb-4">
+                Benchmarking on NVIDIA Grace Hopper (GH200) nodes (150&nbsp;GB/s intra-node, 25&nbsp;GB/s Slingshot inter-node) confirms the protocol trade-offs:
+            </p>
+            <ul class="text-sm text-slate-700 space-y-2 list-disc list-inside mb-4">
+                <li><strong>Inter-node:</strong> LL/LL128 win for small messages (&lt;64&nbsp;KiB); Simple dominates for large messages (GB range) as flag-based sync accumulates millions of operations.</li>
+                <li><strong>Intra-node:</strong> LL128 shines across all sizes over NVLink&mdash;only ~5% slower than Simple at large messages, comparable to LL for small ones.</li>
+                <li><strong>Algorithm:</strong> Ring excels for large messages (bandwidth-optimal); Tree for small messages (lower latency). Autotuning generally picks the right combination.</li>
+            </ul>
+
+            <h3 class="text-xl font-medium mb-3 text-sky-700">NCCL Auto-Selection Logic</h3>
+            <p class="text-slate-700 leading-relaxed mb-3">
+                When no <span class="env-var">NCCL_ALGO</span> or <span class="env-var">NCCL_PROTO</span> overrides are set, NCCL picks based on message size:
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-3 text-left rounded-tl-lg">Message Size</th>
+                            <th class="p-3 text-left">Strategy</th>
+                            <th class="p-3 text-center">Algorithm</th>
+                            <th class="p-3 text-center rounded-tr-lg">Protocol</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Small (&lt;128 KB)</td>
+                            <td class="p-3">Minimise latency</td>
+                            <td class="p-3 text-center">Tree</td>
+                            <td class="p-3 text-center">LL / LL128</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-medium">Medium (128 KB &ndash; 10 MB)</td>
+                            <td class="p-3">Balance</td>
+                            <td class="p-3 text-center">Tree / Ring</td>
+                            <td class="p-3 text-center">LL128 / Simple</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3 font-medium">Large (&gt;10 MB)</td>
+                            <td class="p-3">Maximise bandwidth</td>
+                            <td class="p-3 text-center">Ring / NVLS</td>
+                            <td class="p-3 text-center">Simple</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Real-World Benchmarks -->
+        <section id="real-world" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Real-World Benchmarks: H100 AllReduce</h2>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
+                <h3 class="text-lg font-semibold text-sky-700 mb-2">Test Configuration</h3>
+                <div class="grid md:grid-cols-2 gap-4 text-sm text-slate-700">
+                    <ul class="space-y-1">
+                        <li><strong>GPUs:</strong> 8&times; H100-80GB per node</li>
+                        <li><strong>Intra-node:</strong> NVLink</li>
+                        <li><strong>Inter-node:</strong> GPUDirect-TCPX (no InfiniBand)</li>
+                    </ul>
+                    <ul class="space-y-1">
+                        <li><strong>Message sizes:</strong> 1 MB &ndash; 1 GB</li>
+                        <li><strong>Warmup:</strong> 100 iterations, 10,000 iterations per size</li>
+                        <li><strong>Date:</strong> 2026-03-31</li>
+                    </ul>
+                </div>
+                <div class="overflow-x-auto mt-3">
+                    <table class="w-full text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-200">
+                                <th class="p-2 text-left">Setting</th>
+                                <th class="p-2 text-left">Default</th>
+                                <th class="p-2 text-left">NVLSTree Override</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-slate-600">
+                            <tr><td class="p-2 border-t border-slate-200"><span class="env-var">NCCL_ALGO</span></td><td class="p-2 border-t border-slate-200"><em>Ring</em></td><td class="p-2 border-t border-slate-200">Ring;allreduce:NVLSTree</td></tr>
+                            <tr><td class="p-2 border-t border-slate-200"><span class="env-var">NCCL_PROTO</span></td><td class="p-2 border-t border-slate-200"><em>Simple</em></td><td class="p-2 border-t border-slate-200">LL128,LL,Simple;allreduce:Simple</td></tr>
+                            <tr><td class="p-2 border-t border-slate-200"><span class="env-var">NCCL_IB_DISABLE</span></td><td class="p-2 border-t border-slate-200">1</td><td class="p-2 border-t border-slate-200">1</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2-Node Results -->
+            <h3 class="text-xl font-medium mb-3 text-sky-700">2-Node Results (16 GPUs): Default vs NVLSTree</h3>
+            <div class="overflow-x-auto mb-6">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-2 text-left rounded-tl-lg">Size</th>
+                            <th class="p-2 text-center">Default Avg</th>
+                            <th class="p-2 text-center">Default BW</th>
+                            <th class="p-2 text-center">NVLSTree Avg</th>
+                            <th class="p-2 text-center">NVLSTree BW</th>
+                            <th class="p-2 text-center rounded-tr-lg">Winner</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50"><td class="p-2">1 MB</td><td class="p-2 text-center">2.90 ms</td><td class="p-2 text-center">5.4 GB/s</td><td class="p-2 text-center font-semibold text-green-700">0.86 ms</td><td class="p-2 text-center font-semibold text-green-700">18.3 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (3.4&times;)</td></tr>
+                        <tr><td class="p-2">2 MB</td><td class="p-2 text-center">2.95 ms</td><td class="p-2 text-center">10.7 GB/s</td><td class="p-2 text-center font-semibold text-green-700">0.85 ms</td><td class="p-2 text-center font-semibold text-green-700">36.9 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (3.5&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">4 MB</td><td class="p-2 text-center">2.93 ms</td><td class="p-2 text-center">21.5 GB/s</td><td class="p-2 text-center font-semibold text-green-700">0.87 ms</td><td class="p-2 text-center font-semibold text-green-700">72.4 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (3.4&times;)</td></tr>
+                        <tr><td class="p-2">8 MB</td><td class="p-2 text-center">3.02 ms</td><td class="p-2 text-center">41.7 GB/s</td><td class="p-2 text-center font-semibold text-green-700">1.33 ms</td><td class="p-2 text-center font-semibold text-green-700">94.6 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (2.3&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">16 MB</td><td class="p-2 text-center">3.17 ms</td><td class="p-2 text-center">79.4 GB/s</td><td class="p-2 text-center font-semibold text-green-700">2.23 ms</td><td class="p-2 text-center font-semibold text-green-700">113.0 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (1.4&times;)</td></tr>
+                        <tr><td class="p-2">32 MB</td><td class="p-2 text-center">3.31 ms</td><td class="p-2 text-center">152.1 GB/s</td><td class="p-2 text-center font-semibold text-green-700">2.31 ms</td><td class="p-2 text-center font-semibold text-green-700">217.8 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (1.4&times;)</td></tr>
+                        <tr class="bg-amber-50 border-l-4 border-amber-400"><td class="p-2 font-medium">64 MB</td><td class="p-2 text-center font-semibold text-green-700">3.65 ms</td><td class="p-2 text-center font-semibold text-green-700">276.1 GB/s</td><td class="p-2 text-center">3.95 ms</td><td class="p-2 text-center">254.8 GB/s</td><td class="p-2 text-center text-sm text-amber-700">Crossover</td></tr>
+                        <tr><td class="p-2">128 MB</td><td class="p-2 text-center font-semibold text-green-700">4.89 ms</td><td class="p-2 text-center font-semibold text-green-700">411.4 GB/s</td><td class="p-2 text-center">8.22 ms</td><td class="p-2 text-center">245.0 GB/s</td><td class="p-2 text-center text-sm">Default (1.7&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">256 MB</td><td class="p-2 text-center font-semibold text-green-700">7.15 ms</td><td class="p-2 text-center font-semibold text-green-700">562.9 GB/s</td><td class="p-2 text-center">16.66 ms</td><td class="p-2 text-center">241.8 GB/s</td><td class="p-2 text-center text-sm">Default (2.3&times;)</td></tr>
+                        <tr><td class="p-2">512 MB</td><td class="p-2 text-center font-semibold text-green-700">14.21 ms</td><td class="p-2 text-center font-semibold text-green-700">566.9 GB/s</td><td class="p-2 text-center">33.31 ms</td><td class="p-2 text-center">241.7 GB/s</td><td class="p-2 text-center text-sm">Default (2.3&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">1 GB</td><td class="p-2 text-center font-semibold text-green-700">28.18 ms</td><td class="p-2 text-center font-semibold text-green-700">571.6 GB/s</td><td class="p-2 text-center text-slate-400">&mdash;</td><td class="p-2 text-center text-slate-400">&mdash;</td><td class="p-2 text-center text-sm">Default</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 8-Node Charts -->
+            <h3 class="text-xl font-medium mb-3 text-sky-700">8-Node Results (64 GPUs): Default vs NVLSTree</h3>
+            <div id="chart-8node-latency" style="width:100%; height:400px;" class="mb-4"></div>
+            <div id="chart-8node-bw" style="width:100%; height:400px;" class="mb-6"></div>
+
+            <!-- 8-Node Comparison Table -->
+            <div class="overflow-x-auto mb-6">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-2 text-left rounded-tl-lg">Size</th>
+                            <th class="p-2 text-center">Default Avg</th>
+                            <th class="p-2 text-center">Default BW</th>
+                            <th class="p-2 text-center">NVLSTree Avg</th>
+                            <th class="p-2 text-center">NVLSTree BW</th>
+                            <th class="p-2 text-center rounded-tr-lg">Winner</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50"><td class="p-2">1 MB</td><td class="p-2 text-center">13.35 ms</td><td class="p-2 text-center">4.95 GB/s</td><td class="p-2 text-center font-semibold text-green-700">2.30 ms</td><td class="p-2 text-center font-semibold text-green-700">28.8 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (5.8&times;)</td></tr>
+                        <tr><td class="p-2">2 MB</td><td class="p-2 text-center">13.44 ms</td><td class="p-2 text-center">9.83 GB/s</td><td class="p-2 text-center font-semibold text-green-700">2.31 ms</td><td class="p-2 text-center font-semibold text-green-700">57.3 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (5.8&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">4 MB</td><td class="p-2 text-center">13.33 ms</td><td class="p-2 text-center">19.8 GB/s</td><td class="p-2 text-center font-semibold text-green-700">2.48 ms</td><td class="p-2 text-center font-semibold text-green-700">106.8 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (5.4&times;)</td></tr>
+                        <tr><td class="p-2">8 MB</td><td class="p-2 text-center">13.14 ms</td><td class="p-2 text-center">40.2 GB/s</td><td class="p-2 text-center font-semibold text-green-700">3.64 ms</td><td class="p-2 text-center font-semibold text-green-700">145.2 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (3.6&times;)</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">16 MB</td><td class="p-2 text-center">13.42 ms</td><td class="p-2 text-center">78.8 GB/s</td><td class="p-2 text-center font-semibold text-green-700">6.11 ms</td><td class="p-2 text-center font-semibold text-green-700">172.9 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (2.2&times;)</td></tr>
+                        <tr><td class="p-2">32 MB</td><td class="p-2 text-center">13.86 ms</td><td class="p-2 text-center">152.6 GB/s</td><td class="p-2 text-center font-semibold text-green-700">10.98 ms</td><td class="p-2 text-center font-semibold text-green-700">192.5 GB/s</td><td class="p-2 text-center text-sm">NVLSTree (1.3&times;)</td></tr>
+                        <tr class="bg-amber-50 border-l-4 border-amber-400"><td class="p-2 font-medium">64 MB</td><td class="p-2 text-center font-semibold text-green-700">14.13 ms</td><td class="p-2 text-center font-semibold text-green-700">299.3 GB/s</td><td class="p-2 text-center">19.90 ms</td><td class="p-2 text-center">212.5 GB/s</td><td class="p-2 text-center text-sm text-amber-700">Crossover</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">128 MB</td><td class="p-2 text-center font-semibold text-green-700">14.52 ms</td><td class="p-2 text-center font-semibold text-green-700">582.3 GB/s</td><td class="p-2 text-center">38.00 ms</td><td class="p-2 text-center">222.5 GB/s</td><td class="p-2 text-center text-sm">Default (2.6&times;)</td></tr>
+                        <tr><td class="p-2">256 MB</td><td class="p-2 text-center font-semibold text-green-700">16.29 ms</td><td class="p-2 text-center font-semibold text-green-700">1038.4 GB/s</td><td class="p-2 text-center">73.89 ms</td><td class="p-2 text-center">228.9 GB/s</td><td class="p-2 text-center text-sm">Default (4.5&times;)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 2-Node vs 8-Node Scaling -->
+            <h3 class="text-xl font-medium mb-3 text-sky-700">Scaling: 2-Node vs 8-Node (Default Settings)</h3>
+            <div class="overflow-x-auto mb-6">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-2 text-left rounded-tl-lg">Size</th>
+                            <th class="p-2 text-center">2-Node Avg</th>
+                            <th class="p-2 text-center">2-Node BW</th>
+                            <th class="p-2 text-center">8-Node Avg</th>
+                            <th class="p-2 text-center">8-Node BW</th>
+                            <th class="p-2 text-center">Latency</th>
+                            <th class="p-2 text-center rounded-tr-lg">Bandwidth</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50"><td class="p-2">1 MB</td><td class="p-2 text-center">2.90 ms</td><td class="p-2 text-center">5.4 GB/s</td><td class="p-2 text-center">13.35 ms</td><td class="p-2 text-center">4.95 GB/s</td><td class="p-2 text-center text-red-600">4.6&times; worse</td><td class="p-2 text-center text-slate-500">~same</td></tr>
+                        <tr><td class="p-2">4 MB</td><td class="p-2 text-center">2.93 ms</td><td class="p-2 text-center">21.5 GB/s</td><td class="p-2 text-center">13.33 ms</td><td class="p-2 text-center">19.8 GB/s</td><td class="p-2 text-center text-red-600">4.6&times; worse</td><td class="p-2 text-center text-slate-500">~same</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">16 MB</td><td class="p-2 text-center">3.17 ms</td><td class="p-2 text-center">79.4 GB/s</td><td class="p-2 text-center">13.42 ms</td><td class="p-2 text-center">78.8 GB/s</td><td class="p-2 text-center text-red-600">4.2&times; worse</td><td class="p-2 text-center text-slate-500">~same</td></tr>
+                        <tr><td class="p-2">64 MB</td><td class="p-2 text-center">3.65 ms</td><td class="p-2 text-center">276.1 GB/s</td><td class="p-2 text-center">14.13 ms</td><td class="p-2 text-center">299.3 GB/s</td><td class="p-2 text-center text-red-600">3.9&times; worse</td><td class="p-2 text-center text-green-600">1.1&times; better</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">128 MB</td><td class="p-2 text-center">4.89 ms</td><td class="p-2 text-center">411.4 GB/s</td><td class="p-2 text-center">14.52 ms</td><td class="p-2 text-center">582.3 GB/s</td><td class="p-2 text-center text-red-600">3.0&times; worse</td><td class="p-2 text-center text-green-600 font-semibold">1.4&times; better</td></tr>
+                        <tr><td class="p-2">256 MB</td><td class="p-2 text-center">7.15 ms</td><td class="p-2 text-center">562.9 GB/s</td><td class="p-2 text-center">16.29 ms</td><td class="p-2 text-center">1038.4 GB/s</td><td class="p-2 text-center text-red-600">2.3&times; worse</td><td class="p-2 text-center text-green-600 font-semibold">1.8&times; better</td></tr>
+                        <tr class="bg-sky-50"><td class="p-2">512 MB</td><td class="p-2 text-center">14.21 ms</td><td class="p-2 text-center">566.9 GB/s</td><td class="p-2 text-center">22.64 ms</td><td class="p-2 text-center">1493.8 GB/s</td><td class="p-2 text-center text-red-600">1.6&times; worse</td><td class="p-2 text-center text-green-600 font-semibold">2.6&times; better</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Key Takeaways -->
+            <div class="bg-sky-50 border-l-4 border-sky-500 p-4 rounded">
+                <h3 class="font-semibold text-sky-700 mb-2">Key Takeaways</h3>
+                <ul class="text-sm text-slate-700 space-y-2 list-disc list-inside">
+                    <li><strong>Default (Ring/Simple) wins for large messages</strong> (&ge;64 MB): up to 2.3&times; higher bandwidth on 2 nodes, up to 4.5&times; on 8 nodes. Peak ~571 GB/s (2N) and ~1494 GB/s (8N).</li>
+                    <li><strong>NVLSTree wins for small messages</strong> (&le;32 MB): up to 3.5&times; lower latency on 2 nodes, up to 5.8&times; on 8 nodes via NVLS hardware intra-node reduction.</li>
+                    <li><strong>Crossover point:</strong> ~64 MB on both 2-node and 8-node setups.</li>
+                    <li><strong>Scaling:</strong> latency grows ~4&times; from 2&rarr;8 nodes for small messages, but aggregate bandwidth <em>improves</em> for large messages (2.6&times; better at 512 MB).</li>
+                    <li><strong>NVLSTree advantage grows with node count</strong>&mdash;Ring latency scales linearly with GPU count, while NVLSTree scales logarithmically.</li>
+                </ul>
+            </div>
+        </section>
+
+        <script>
+        (function() {
+            var sizes = ['1 MB','2 MB','4 MB','8 MB','16 MB','32 MB','64 MB','128 MB','256 MB','512 MB'];
+            var sizes9 = ['1 MB','2 MB','4 MB','8 MB','16 MB','32 MB','64 MB','128 MB','256 MB'];
+
+            var defaultLat = [13.354,13.444,13.328,13.135,13.416,13.858,14.128,14.522,16.287,22.642];
+            var nvlsLat = [2.295,2.306,2.475,3.64,6.112,10.983,19.9,38.002,73.888];
+
+            var defaultBW = [4.95,9.83,19.83,40.24,78.79,152.55,299.25,582.27,1038.36,1493.82];
+            var nvlsBW = [28.79,57.3,106.77,145.18,172.93,192.48,212.46,222.51,228.88];
+
+            var barColors = {default: '#0284c7', nvls: '#76B900'};
+
+            Plotly.newPlot('chart-8node-latency', [
+                {x: sizes, y: defaultLat, name: 'Default (Ring/Simple)', type: 'bar',
+                 marker: {color: barColors.default}, text: defaultLat.map(function(v){return v.toFixed(1)}), textposition: 'outside', textfont: {size: 10}},
+                {x: sizes9, y: nvlsLat, name: 'NVLSTree', type: 'bar',
+                 marker: {color: barColors.nvls}, text: nvlsLat.map(function(v){return v.toFixed(1)}), textposition: 'outside', textfont: {size: 10}}
+            ], {
+                title: {text: '8-Node AllReduce: Latency (ms)', font: {size: 15}},
+                yaxis: {title: 'Latency (ms)', type: 'log'},
+                xaxis: {title: 'Message Size'},
+                barmode: 'group',
+                legend: {orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center'},
+                margin: {t: 60, b: 50},
+                paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
+            }, {responsive: true});
+
+            Plotly.newPlot('chart-8node-bw', [
+                {x: sizes, y: defaultBW, name: 'Default (Ring/Simple)', type: 'bar',
+                 marker: {color: barColors.default}, text: defaultBW.map(function(v){return v.toFixed(0)}), textposition: 'outside', textfont: {size: 10}},
+                {x: sizes9, y: nvlsBW, name: 'NVLSTree', type: 'bar',
+                 marker: {color: barColors.nvls}, text: nvlsBW.map(function(v){return v.toFixed(0)}), textposition: 'outside', textfont: {size: 10}}
+            ], {
+                title: {text: '8-Node AllReduce: Bandwidth (GB/s)', font: {size: 15}},
+                yaxis: {title: 'Bandwidth (GB/s)', type: 'log'},
+                xaxis: {title: 'Message Size'},
+                barmode: 'group',
+                legend: {orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center'},
+                margin: {t: 60, b: 50},
+                paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'
+            }, {responsive: true});
+        })();
+        </script>
+
+        <!-- Key Environment Variables -->
+        <section id="env-vars" class="mb-12 bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-3xl font-semibold mb-4">Key Environment Variables</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-sky-600 text-white">
+                            <th class="p-3 text-left rounded-tl-lg">Variable</th>
+                            <th class="p-3 text-left rounded-tr-lg">Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-700">
+                        <tr class="bg-sky-50">
+                            <td class="p-3"><span class="env-var">NCCL_DEBUG=INFO</span></td>
+                            <td class="p-3">Verbose logging of GPU communication topology, algorithm selection, and transport details.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3"><span class="env-var">NCCL_PROTO=Simple|LL|LL128</span></td>
+                            <td class="p-3">Force a specific communication protocol (overrides autotuner).</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3"><span class="env-var">NCCL_ALGO=Ring|Tree</span></td>
+                            <td class="p-3">Force a specific collective algorithm.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3"><span class="env-var">NCCL_CROSS_NIC=0|1|2</span></td>
+                            <td class="p-3">Control whether NCCL routes intra-node traffic through NICs across sockets.</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3"><span class="env-var">NCCL_NET_GDR_LEVEL</span></td>
+                            <td class="p-3">Control GPUDirect RDMA usage level based on GPU-NIC topology distance.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3"><span class="env-var">NCCL_IB_HCA</span></td>
+                            <td class="p-3">Specify which InfiniBand HCA(s) to use.</td>
+                        </tr>
+                        <tr class="bg-sky-50">
+                            <td class="p-3"><span class="env-var">NCCL_SOCKET_IFNAME</span></td>
+                            <td class="p-3">Specify network interface for socket-based communication.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="text-center mt-12 py-6 border-t border-slate-200">
+            <p class="text-sm text-slate-500 mb-1">
+                Content based on:
+                <a href="https://arxiv.org/html/2507.04786v1" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">
+                    Hu et al., &ldquo;Demystifying NCCL: An In-depth Analysis of GPU Communication Protocols and Algorithms&rdquo; (arXiv:2507.04786)
+                </a>
+            </p>
+            <p class="text-sm text-slate-500 mb-1">
+                <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html" target="_blank" rel="noopener noreferrer" class="text-sky-600 hover:underline">
+                    NVIDIA NCCL User Guide
+                </a>
+            </p>
+            <p class="text-sm text-slate-500">NCCL Performance Guide &copy; 2025.</p>
+        </footer>
+    </div>
+</body>
+</html>
